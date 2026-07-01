@@ -44,6 +44,10 @@ The `Update project from GitHub` menu option compares the local commit hash with
 fast-forward update, validates the project, rebuilds it, and restarts Shadow AI.
 Local `.env` credentials are ignored by Git and remain untouched.
 
+For safety, the updater refuses non-fast-forward updates, unexpected remotes,
+or tracked files with uncommitted local changes. It prints both commit hashes
+and the changed-file list before applying an update.
+
 1. **Get a Gemini API Key**: Visit [Google AI Studio](https://aistudio.google.com/apikey)
 2. **Install Dependencies**: `npm install`
 3. **Run the App**: `npm start`
