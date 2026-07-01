@@ -3,7 +3,7 @@ const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
 const { getSystemPrompt } = require('./prompts');
-const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, getCredentials, incrementCharUsage, getModelForToday } = require('../storage');
+const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, getCredentials, incrementCharUsage, getModelForToday, normalizeLanguageCode } = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const { getConfiguredProviders, streamWithFallback } = require('./providerRouter');
 const { syncProviderEnvironment } = require('./providerEnv');
@@ -514,6 +514,7 @@ async function sendToAnswerProvider(transcription) {
 
 async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US', isReconnect = false) {
     apiKey = apiKey || process.env.GEMINI_API_KEY || '';
+    language = normalizeLanguageCode(language);
     if (isInitializingSession) {
         console.log('Session initialization already in progress');
         return false;

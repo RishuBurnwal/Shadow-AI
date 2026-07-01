@@ -38,6 +38,13 @@ const DEFAULT_PREFERENCES = {
     whisperModel: 'Xenova/whisper-small',
 };
 
+function normalizeLanguageCode(value) {
+    const language = String(value || '').trim();
+    if (!language || language.toLowerCase() === 'auto') return DEFAULT_PREFERENCES.selectedLanguage;
+    if (!/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(language)) return DEFAULT_PREFERENCES.selectedLanguage;
+    return language;
+}
+
 const DEFAULT_KEYBINDS = null; // null means use system defaults
 
 const DEFAULT_LIMITS = {
@@ -214,18 +221,22 @@ function setGroqApiKey(groqApiKey) {
 
 function getPreferences() {
     const saved = readJsonFile(getPreferencesPath(), {});
-    return { ...DEFAULT_PREFERENCES, ...saved };
+    return { ...DEFAULT_PREFERENCES, ...saved, selectedLanguage: normalizeLanguageCode(saved.selectedLanguage) };
 }
 
 function setPreferences(preferences) {
     const current = getPreferences();
-    const updated = { ...current, ...preferences };
+    const updated = {
+        ...current,
+        ...preferences,
+        selectedLanguage: normalizeLanguageCode(preferences?.selectedLanguage ?? current.selectedLanguage),
+    };
     return writeJsonFile(getPreferencesPath(), updated);
 }
 
 function updatePreference(key, value) {
     const preferences = getPreferences();
-    preferences[key] = value;
+    preferences[key] = key === 'selectedLanguage' ? normalizeLanguageCode(value) : value;
     return writeJsonFile(getPreferencesPath(), preferences);
 }
 
@@ -515,6 +526,7 @@ module.exports = {
     setPreferences,
     updatePreference,
 
+    normalizeLanguageCode,
     // Keybinds
     getKeybinds,
     setKeybinds,

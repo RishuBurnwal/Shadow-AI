@@ -71,3 +71,12 @@ test('maintained project files contain no legacy product references', () => {
     visit(root);
     assert.deepEqual(matches, []);
 });
+
+test('speech language preferences reject auto and invalid values', () => {
+    const { normalizeLanguageCode } = require('../src/storage');
+
+    assert.equal(normalizeLanguageCode('auto'), 'en-US');
+    assert.equal(normalizeLanguageCode('   '), 'en-US');
+    assert.equal(normalizeLanguageCode('hi-IN'), 'hi-IN');
+    assert.equal(normalizeLanguageCode('zzzzz'), 'en-US');
+});
