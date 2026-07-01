@@ -33,6 +33,20 @@ test('persistent header owns the shared background transparency and passthrough 
     assert.doesNotMatch(appSource, /top-drag-bar[^\n]*hidden/);
 });
 
+test('header AI text opacity controls only the rendered response content', () => {
+    const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+    const assistantSource = fs.readFileSync(path.join(root, 'src/components/views/AssistantView.js'), 'utf8');
+    const storageSource = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
+
+    assert.match(appSource, /AI Text \$\{Math\.round\(this\.responseTextOpacity \* 100\)\}%/);
+    assert.match(appSource, /handleResponseTextOpacityChange/);
+    assert.match(appSource, /\.responseTextOpacity=\$\{this\.responseTextOpacity\}/);
+    assert.equal((appSource.match(/type="range"/g) || []).length, 2);
+    assert.match(assistantSource, /class="response-text-content"/);
+    assert.match(assistantSource, /--ai-response-text-opacity/);
+    assert.match(storageSource, /responseTextOpacity: 1/);
+});
+
 test('maintained project files contain no legacy product references', () => {
     const legacy = new RegExp(['cheating', 'daddy'].join('[-_\\s]?'), 'i');
     const ignored = new Set(['.git', 'node_modules', 'graphify-out', 'test']);

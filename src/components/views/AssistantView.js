@@ -41,6 +41,10 @@ export class AssistantView extends LitElement {
             display: inline-block;
         }
 
+        .response-text-content {
+            opacity: var(--ai-response-text-opacity, 1);
+        }
+
         /* ── Markdown ── */
 
         .response-container h1,
@@ -318,6 +322,7 @@ export class AssistantView extends LitElement {
         selectedProfile: { type: String },
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
+        responseTextOpacity: { type: Number },
         isAnalyzing: { type: Boolean, state: true },
     };
 
@@ -327,6 +332,7 @@ export class AssistantView extends LitElement {
         this.currentResponseIndex = -1;
         this.selectedProfile = 'interview';
         this.onSendText = () => {};
+        this.responseTextOpacity = 1;
         this.isAnalyzing = false;
         this._animFrame = null;
     }
@@ -669,7 +675,7 @@ export class AssistantView extends LitElement {
         if (container) {
             const currentResponse = this.getCurrentResponse();
             const renderedResponse = this.renderMarkdown(currentResponse);
-            container.innerHTML = renderedResponse;
+            container.innerHTML = `<div class="response-text-content">${renderedResponse}</div>`;
             if (this.shouldAnimateResponse) {
                 this.dispatchEvent(new CustomEvent('response-animation-complete', { bubbles: true, composed: true }));
             }
@@ -680,7 +686,11 @@ export class AssistantView extends LitElement {
         const hasMultipleResponses = this.responses.length > 1;
 
         return html`
-            <div class="response-container" id="responseContainer"></div>
+            <div
+                class="response-container"
+                id="responseContainer"
+                style="--ai-response-text-opacity: ${this.responseTextOpacity}"
+            ></div>
 
             ${
                 hasMultipleResponses

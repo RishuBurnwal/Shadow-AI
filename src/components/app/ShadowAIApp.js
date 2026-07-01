@@ -438,6 +438,7 @@ export class ShadowAIApp extends LitElement {
         _updateAvailable: { state: true },
         _whisperDownloading: { state: true },
         backgroundTransparency: { type: Number },
+        responseTextOpacity: { type: Number },
         _providerNotification: { state: true },
     };
 
@@ -466,6 +467,7 @@ export class ShadowAIApp extends LitElement {
         this._whisperDownloading = false;
         this._localVersion = '';
         this.backgroundTransparency = 0.8;
+        this.responseTextOpacity = 1;
         this._providerNotification = null;
         this._providerNotificationTimer = null;
 
@@ -507,6 +509,7 @@ export class ShadowAIApp extends LitElement {
             this.selectedImageQuality = prefs.selectedImageQuality || 'medium';
             this.layoutMode = config.layout || 'normal';
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
+            this.responseTextOpacity = prefs.responseTextOpacity ?? 1;
 
             this._storageLoaded = true;
             this.requestUpdate();
@@ -655,6 +658,13 @@ export class ShadowAIApp extends LitElement {
         await shadowAI.storage.updatePreference('backgroundTransparency', this.backgroundTransparency);
         const colors = shadowAI.theme.get(shadowAI.theme.current);
         shadowAI.theme.applyBackgrounds(colors.background, this.backgroundTransparency);
+        this.requestUpdate();
+    }
+
+    async handleResponseTextOpacityChange(value) {
+        const nextValue = Math.min(1, Math.max(0, Number(value)));
+        this.responseTextOpacity = Number.isFinite(nextValue) ? nextValue : 1;
+        await shadowAI.storage.updatePreference('responseTextOpacity', this.responseTextOpacity);
         this.requestUpdate();
     }
 
@@ -878,6 +888,7 @@ export class ShadowAIApp extends LitElement {
                         .responses=${this.responses}
                         .currentResponseIndex=${this.currentResponseIndex}
                         .selectedProfile=${this.selectedProfile}
+                        .responseTextOpacity=${this.responseTextOpacity}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
                         @response-index-changed=${this.handleResponseIndexChanged}
@@ -1079,6 +1090,18 @@ export class ShadowAIApp extends LitElement {
                             step="0.01"
                             .value=${this.backgroundTransparency}
                             @input=${event => this.handleBackgroundTransparencyChange(event.target.value)}
+                        />
+                    </label>
+                    <label class="header-control" title="Controls only AI response text opacity">
+                        <span>AI Text ${Math.round(this.responseTextOpacity * 100)}%</span>
+                        <input
+                            class="header-opacity"
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            .value=${this.responseTextOpacity}
+                            @input=${event => this.handleResponseTextOpacityChange(event.target.value)}
                         />
                     </label>
                     <button
