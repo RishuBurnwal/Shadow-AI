@@ -606,7 +606,6 @@ export class MainView extends LitElement {
             this._apiKeys = {
                 openrouterApiKey: creds.openrouterApiKey || '',
                 openaiApiKey: creds.openaiApiKey || creds.openaiKey || '',
-                webkarmaApiKey: creds.webkarmaApiKey || '',
                 perplexityApiKey: creds.perplexityApiKey || '',
                 nvidiaApiKey: creds.nvidiaApiKey || '',
             };
@@ -812,7 +811,6 @@ export class MainView extends LitElement {
         this._apiKeys = {
             openrouterApiKey: credentials.openrouterApiKey || '',
             openaiApiKey: credentials.openaiApiKey || '',
-            webkarmaApiKey: credentials.webkarmaApiKey || '',
             perplexityApiKey: credentials.perplexityApiKey || '',
             nvidiaApiKey: credentials.nvidiaApiKey || '',
         };
@@ -952,7 +950,6 @@ export class MainView extends LitElement {
         const additionalProviders = [
             { name: 'OpenRouter', credential: 'openrouterApiKey', status: 'openrouter', url: 'https://openrouter.ai/keys' },
             { name: 'OpenAI', credential: 'openaiApiKey', status: 'openai', url: 'https://platform.openai.com/api-keys' },
-            { name: 'WebKarma', credential: 'webkarmaApiKey', status: 'webkarma', url: 'https://webkarma.com' },
             { name: 'Perplexity', credential: 'perplexityApiKey', status: 'perplexity', url: 'https://www.perplexity.ai/settings/api' },
             { name: 'NVIDIA', credential: 'nvidiaApiKey', status: 'nvidia', url: 'https://build.nvidia.com' },
         ];

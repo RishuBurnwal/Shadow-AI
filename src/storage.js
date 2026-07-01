@@ -16,7 +16,6 @@ const DEFAULT_CREDENTIALS = {
     groqApiKey: '',
     openrouterApiKey: '',
     openaiApiKey: '',
-    webkarmaApiKey: '',
     perplexityApiKey: '',
     nvidiaApiKey: '',
 };

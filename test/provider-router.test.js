@@ -142,11 +142,11 @@ test('BYOK UI exposes Add API controls for every fallback provider', () => {
     const gemini = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
 
     assert.match(mainView, /'\+ Add API'/);
-    for (const provider of ['OpenRouter', 'OpenAI', 'WebKarma', 'Perplexity', 'NVIDIA']) {
+    for (const provider of ['OpenRouter', 'OpenAI', 'Perplexity', 'NVIDIA']) {
         assert.match(mainView, new RegExp(`name: '${provider}'`));
     }
     assert.match(mainView, /provider\.name} API Key/);
-    for (const credential of ['openrouterApiKey', 'openaiApiKey', 'webkarmaApiKey', 'perplexityApiKey', 'nvidiaApiKey']) {
+    for (const credential of ['openrouterApiKey', 'openaiApiKey', 'perplexityApiKey', 'nvidiaApiKey']) {
         assert.match(gemini, new RegExp(credential));
     }
 });

@@ -11,7 +11,6 @@ const PROVIDER_KEYS = Object.freeze({
     groq: { envKey: 'GROQ_API_KEY', credential: 'groqApiKey' },
     openrouter: { envKey: 'OPENROUTER_API_KEY', credential: 'openrouterApiKey' },
     openai: { envKey: 'OPENAI_API_KEY', credential: 'openaiApiKey' },
-    webkarma: { envKey: 'WEBKARMA_API_KEY', credential: 'webkarmaApiKey' },
     perplexity: { envKey: 'PERPLEXITY_API_KEY', credential: 'perplexityApiKey' },
     nvidia: { envKey: 'NVIDIA_API_KEY', credential: 'nvidiaApiKey' },
 });

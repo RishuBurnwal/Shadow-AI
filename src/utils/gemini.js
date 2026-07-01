@@ -436,7 +436,6 @@ async function sendToAnswerProvider(transcription) {
         GEMINI_API_KEY: getApiKey() || process.env.GEMINI_API_KEY,
         OPENROUTER_API_KEY: credentials.openrouterApiKey || process.env.OPENROUTER_API_KEY,
         OPENAI_API_KEY: credentials.openaiApiKey || process.env.OPENAI_API_KEY,
-        WEBKARMA_API_KEY: credentials.webkarmaApiKey || process.env.WEBKARMA_API_KEY,
         PERPLEXITY_API_KEY: credentials.perplexityApiKey || process.env.PERPLEXITY_API_KEY,
         NVIDIA_API_KEY: credentials.nvidiaApiKey || process.env.NVIDIA_API_KEY,
     };
@@ -465,9 +464,7 @@ async function sendToAnswerProvider(transcription) {
     let isFirst = true;
     let fallbackOccurred = false;
     const providerLabel = provider =>
-        ({ groq: 'Groq', openrouter: 'OpenRouter', openai: 'OpenAI', webkarma: 'WebKarma', perplexity: 'Perplexity', nvidia: 'NVIDIA' })[
-            provider
-        ] || provider;
+        ({ groq: 'Groq', openrouter: 'OpenRouter', openai: 'OpenAI', perplexity: 'Perplexity', nvidia: 'NVIDIA' })[provider] || provider;
 
     try {
         const result = await streamWithFallback({

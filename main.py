@@ -14,7 +14,6 @@ PROVIDERS = {
     "groq": "GROQ_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
     "openai": "OPENAI_API_KEY",
-    "webkarma": "WEBKARMA_API_KEY",
     "perplexity": "PERPLEXITY_API_KEY",
     "nvidia": "NVIDIA_API_KEY",
     "gemma": "GEMINI_API_KEY",

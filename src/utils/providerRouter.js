@@ -9,13 +9,6 @@ const PROVIDER_DEFINITIONS = [
     },
     { id: 'openai', envKey: 'OPENAI_API_KEY', baseUrl: 'https://api.openai.com/v1', modelEnv: 'OPENAI_MODEL', model: 'gpt-4o-mini' },
     {
-        id: 'webkarma',
-        envKey: 'WEBKARMA_API_KEY',
-        baseUrl: 'https://api.openai.com/v1',
-        modelEnv: 'WEBKARMA_MODEL',
-        model: 'gpt-4o-mini',
-    },
-    {
         id: 'perplexity',
         envKey: 'PERPLEXITY_API_KEY',
         baseUrl: 'https://api.perplexity.ai',
