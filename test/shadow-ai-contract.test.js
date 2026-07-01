@@ -1,0 +1,59 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+
+const root = path.resolve(__dirname, '..');
+
+test('passthrough remains enabled while temporarily restoring header interaction', () => {
+    const { createPassthroughController } = require('../src/utils/passthrough');
+    const calls = [];
+    const window = {
+        isDestroyed: () => false,
+        setIgnoreMouseEvents: (...args) => calls.push(args),
+        webContents: { send: () => {} },
+    };
+    const controller = createPassthroughController(window);
+
+    controller.setEnabled(true);
+    controller.setHeaderInteractive(true);
+    controller.setHeaderInteractive(false);
+
+    assert.equal(controller.isEnabled(), true);
+    assert.deepEqual(calls, [[true, { forward: true }], [false], [true, { forward: true }]]);
+});
+
+test('persistent header owns the shared background transparency and passthrough controls', () => {
+    const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+
+    assert.match(appSource, /class="top-drag-bar"/);
+    assert.match(appSource, /--header-solid-background/);
+    assert.match(appSource, /backgroundTransparency/);
+    assert.match(appSource, />\s*Passthrough\s*</);
+    assert.doesNotMatch(appSource, /top-drag-bar[^\n]*hidden/);
+});
+
+test('maintained project files contain no legacy product references', () => {
+    const legacy = new RegExp(['cheating', 'daddy'].join('[-_\\s]?'), 'i');
+    const ignored = new Set(['.git', 'node_modules', 'graphify-out', 'test']);
+    const matches = [];
+
+    function visit(directory) {
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+            if (ignored.has(entry.name)) continue;
+            const fullPath = path.join(directory, entry.name);
+            if (entry.isDirectory()) {
+                visit(fullPath);
+                continue;
+            }
+            if (!/\.(?:js|json|md|html|py|yml|yaml|txt)$/.test(entry.name)) continue;
+            const content = fs.readFileSync(fullPath, 'utf8');
+            if (legacy.test(content) || legacy.test(entry.name)) {
+                matches.push(path.relative(root, fullPath));
+            }
+        }
+    }
+
+    visit(root);
+    assert.deepEqual(matches, []);
+});
