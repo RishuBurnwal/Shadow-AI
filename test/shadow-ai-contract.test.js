@@ -64,6 +64,19 @@ test('header AI color picker controls only rendered response text and persists',
     assert.match(storageSource, /responseTextColor: '#f5f5f5'/);
 });
 
+test('history exposes confirmed bulk deletion and feedback feature is absent', () => {
+    const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+    const historySource = fs.readFileSync(path.join(root, 'src/components/views/HistoryView.js'), 'utf8');
+    const rendererSource = fs.readFileSync(path.join(root, 'src/utils/renderer.js'), 'utf8');
+
+    assert.match(historySource, /'Clear History'/);
+    assert.match(historySource, /window\.confirm/);
+    assert.match(historySource, /shadowAI\.storage\.deleteAllSessions\(\)/);
+    assert.match(rendererSource, /storage:delete-all-sessions/);
+    assert.doesNotMatch(appSource, /feedback/i);
+    assert.equal(fs.existsSync(path.join(root, 'src/components/views/FeedbackView.js')), false);
+});
+
 test('maintained project files contain no legacy product references', () => {
     const legacy = new RegExp(['cheating', 'daddy'].join('[-_\\s]?'), 'i');
     const ignored = new Set(['.git', 'node_modules', 'graphify-out', 'test']);

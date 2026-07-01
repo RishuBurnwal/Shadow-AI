@@ -33,6 +33,37 @@ export class HistoryView extends LitElement {
                 padding-left: 30px;
             }
 
+            .history-heading {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: var(--space-md);
+            }
+
+            .clear-history-button {
+                border: 1px solid var(--danger, #ef4444);
+                border-radius: var(--radius-sm);
+                background: transparent;
+                color: var(--danger, #ef4444);
+                padding: 6px 10px;
+                font-size: var(--font-size-xs);
+                cursor: pointer;
+            }
+
+            .clear-history-button:hover:not(:disabled) {
+                background: rgba(239, 68, 68, 0.12);
+            }
+
+            .clear-history-button:disabled {
+                cursor: not-allowed;
+                opacity: 0.45;
+            }
+
+            .history-error {
+                color: var(--danger, #ef4444);
+                font-size: var(--font-size-xs);
+            }
+
             .list-shell {
                 border: 1px solid var(--border);
                 border-radius: var(--radius-md);
@@ -265,6 +296,8 @@ export class HistoryView extends LitElement {
         loading: { type: Boolean },
         activeTab: { type: String },
         searchQuery: { type: String },
+        clearingHistory: { type: Boolean },
+        historyError: { type: String },
     };
 
     constructor() {
@@ -275,6 +308,8 @@ export class HistoryView extends LitElement {
         this.loading = true;
         this.activeTab = 'conversation';
         this.searchQuery = '';
+        this.clearingHistory = false;
+        this.historyError = '';
         this.loadSessions();
     }
 
@@ -313,6 +348,28 @@ export class HistoryView extends LitElement {
 
     handleSearchInput(e) {
         this.searchQuery = e.target.value;
+    }
+
+    async clearHistory() {
+        if (this.clearingHistory || this.sessions.length === 0) return;
+        if (!window.confirm(`Clear all ${this.sessions.length} saved session${this.sessions.length === 1 ? '' : 's'}? This cannot be undone.`))
+            return;
+
+        this.clearingHistory = true;
+        this.historyError = '';
+        try {
+            const result = await shadowAI.storage.deleteAllSessions();
+            if (!result?.success) throw new Error(result?.error || 'Unable to clear history.');
+            this.sessions = [];
+            this.selectedSession = null;
+            this.selectedSessionId = null;
+            this.searchQuery = '';
+        } catch (error) {
+            console.error('Error clearing history:', error);
+            this.historyError = error.message || 'Unable to clear history.';
+        } finally {
+            this.clearingHistory = false;
+        }
     }
 
     formatDate(timestamp) {
@@ -444,7 +501,18 @@ export class HistoryView extends LitElement {
     renderListView() {
         const filteredSessions = this.getFilteredSessions();
         return html`
-            <div class="page-title">History</div>
+            <div class="history-heading">
+                <div class="page-title">History</div>
+                <button
+                    class="clear-history-button"
+                    ?disabled=${this.loading || this.clearingHistory || this.sessions.length === 0}
+                    @click=${this.clearHistory}
+                >
+                    ${this.clearingHistory ? 'Clearing...' : 'Clear History'}
+                </button>
+            </div>
+
+            ${this.historyError ? html`<div class="history-error" role="alert">${this.historyError}</div>` : ''}
 
             <div class="search-wrap">
                 <svg
@@ -518,24 +586,24 @@ export class HistoryView extends LitElement {
                 <button
                     class="tab-btn ${this.activeTab === 'conversation' ? 'active' : ''}"
                     @click=${() => {
-                    this.activeTab = 'conversation';
-                }}
+                        this.activeTab = 'conversation';
+                    }}
                 >
                     Conversation (${conversationCount})
                 </button>
                 <button
                     class="tab-btn ${this.activeTab === 'screen' ? 'active' : ''}"
                     @click=${() => {
-                    this.activeTab = 'screen';
-                }}
+                        this.activeTab = 'screen';
+                    }}
                 >
                     Screen (${screenCount})
                 </button>
                 <button
                     class="tab-btn ${this.activeTab === 'context' ? 'active' : ''}"
                     @click=${() => {
-                    this.activeTab = 'context';
-                }}
+                        this.activeTab = 'context';
+                    }}
                 >
                     Context
                 </button>
