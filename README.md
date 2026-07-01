@@ -14,7 +14,7 @@ The project includes a numbered Python launcher for installation, startup, diagn
 - UI-based API key management synchronized with the local `.env` file.
 - Optional local mode using Ollama and Whisper.
 - Interview, sales, meeting, presentation, negotiation, and exam profiles.
-- Transparent always-on-top overlay with independent background and AI-response text opacity.
+- Transparent always-on-top overlay with independent background opacity, AI-response text opacity, and adjustable response text color.
 - Passthrough mode for interacting with applications behind the overlay.
 - Conversation history, markdown responses, screen analysis, and manual text prompts.
 - Hash-based GitHub updater that validates, rebuilds, and restarts the project.
@@ -108,9 +108,10 @@ Changes made in the UI are written to `.env`. External `.env` changes are reload
 
 - **Background** changes the application/background transparency.
 - **AI Text** changes only the rendered AI-response text opacity.
+- **AI Color** opens a color picker that changes only the rendered AI-response text color.
 - **Passthrough** allows mouse interaction with the window behind Shadow AI while keeping the header recoverable.
 
-The two opacity values are stored independently and restored on the next launch.
+Background opacity, response opacity, and response color are stored independently and restored on the next launch.
 
 ## Local AI Mode
 

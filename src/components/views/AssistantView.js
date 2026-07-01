@@ -43,6 +43,11 @@ export class AssistantView extends LitElement {
 
         .response-text-content {
             opacity: var(--ai-response-text-opacity, 1);
+            color: var(--ai-response-text-color, var(--text-primary));
+        }
+
+        .response-text-content * {
+            color: inherit !important;
         }
 
         /* ── Markdown ── */
@@ -323,6 +328,7 @@ export class AssistantView extends LitElement {
         onSendText: { type: Function },
         shouldAnimateResponse: { type: Boolean },
         responseTextOpacity: { type: Number },
+        responseTextColor: { type: String },
         isAnalyzing: { type: Boolean, state: true },
     };
 
@@ -333,6 +339,7 @@ export class AssistantView extends LitElement {
         this.selectedProfile = 'interview';
         this.onSendText = () => {};
         this.responseTextOpacity = 1;
+        this.responseTextColor = '#f5f5f5';
         this.isAnalyzing = false;
         this._animFrame = null;
     }
@@ -689,7 +696,7 @@ export class AssistantView extends LitElement {
             <div
                 class="response-container"
                 id="responseContainer"
-                style="--ai-response-text-opacity: ${this.responseTextOpacity}"
+                style="--ai-response-text-opacity: ${this.responseTextOpacity}; --ai-response-text-color: ${this.responseTextColor}"
             ></div>
 
             ${

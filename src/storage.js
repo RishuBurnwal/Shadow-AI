@@ -32,6 +32,7 @@ const DEFAULT_PREFERENCES = {
     fontSize: 'medium',
     backgroundTransparency: 0.8,
     responseTextOpacity: 1,
+    responseTextColor: '#f5f5f5',
     googleSearchEnabled: false,
     ollamaHost: 'http://127.0.0.1:11434',
     ollamaModel: 'llama3.1',

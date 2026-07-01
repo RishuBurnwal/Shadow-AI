@@ -47,6 +47,19 @@ test('header AI text opacity controls only the rendered response content', () =>
     assert.match(storageSource, /responseTextOpacity: 1/);
 });
 
+test('header AI color picker controls only rendered response text and persists', () => {
+    const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+    const assistantSource = fs.readFileSync(path.join(root, 'src/components/views/AssistantView.js'), 'utf8');
+    const storageSource = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
+
+    assert.match(appSource, /type="color"/);
+    assert.match(appSource, /handleResponseTextColorChange/);
+    assert.match(appSource, /\.responseTextColor=\$\{this\.responseTextColor\}/);
+    assert.match(assistantSource, /--ai-response-text-color/);
+    assert.match(assistantSource, /\.response-text-content \*/);
+    assert.match(storageSource, /responseTextColor: '#f5f5f5'/);
+});
+
 test('maintained project files contain no legacy product references', () => {
     const legacy = new RegExp(['cheating', 'daddy'].join('[-_\\s]?'), 'i');
     const ignored = new Set(['.git', 'node_modules', 'graphify-out', 'test']);

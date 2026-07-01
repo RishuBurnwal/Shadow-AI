@@ -71,6 +71,17 @@ export class ShadowAIApp extends LitElement {
             cursor: pointer;
         }
 
+        .header-color {
+            width: 30px;
+            height: 26px;
+            padding: 1px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-elevated);
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+        }
+
         .passthrough-button {
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
@@ -439,6 +450,7 @@ export class ShadowAIApp extends LitElement {
         _whisperDownloading: { state: true },
         backgroundTransparency: { type: Number },
         responseTextOpacity: { type: Number },
+        responseTextColor: { type: String },
         _providerNotification: { state: true },
     };
 
@@ -468,6 +480,7 @@ export class ShadowAIApp extends LitElement {
         this._localVersion = '';
         this.backgroundTransparency = 0.8;
         this.responseTextOpacity = 1;
+        this.responseTextColor = '#f5f5f5';
         this._providerNotification = null;
         this._providerNotificationTimer = null;
 
@@ -510,6 +523,7 @@ export class ShadowAIApp extends LitElement {
             this.layoutMode = config.layout || 'normal';
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.responseTextOpacity = prefs.responseTextOpacity ?? 1;
+            this.responseTextColor = /^#[0-9a-f]{6}$/i.test(prefs.responseTextColor) ? prefs.responseTextColor : '#f5f5f5';
 
             this._storageLoaded = true;
             this.requestUpdate();
@@ -665,6 +679,13 @@ export class ShadowAIApp extends LitElement {
         const nextValue = Math.min(1, Math.max(0, Number(value)));
         this.responseTextOpacity = Number.isFinite(nextValue) ? nextValue : 1;
         await shadowAI.storage.updatePreference('responseTextOpacity', this.responseTextOpacity);
+        this.requestUpdate();
+    }
+
+    async handleResponseTextColorChange(value) {
+        const nextValue = String(value || '').trim();
+        this.responseTextColor = /^#[0-9a-f]{6}$/i.test(nextValue) ? nextValue.toLowerCase() : '#f5f5f5';
+        await shadowAI.storage.updatePreference('responseTextColor', this.responseTextColor);
         this.requestUpdate();
     }
 
@@ -889,6 +910,7 @@ export class ShadowAIApp extends LitElement {
                         .currentResponseIndex=${this.currentResponseIndex}
                         .selectedProfile=${this.selectedProfile}
                         .responseTextOpacity=${this.responseTextOpacity}
+                        .responseTextColor=${this.responseTextColor}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
                         @response-index-changed=${this.handleResponseIndexChanged}
@@ -1102,6 +1124,15 @@ export class ShadowAIApp extends LitElement {
                             step="0.01"
                             .value=${this.responseTextOpacity}
                             @input=${event => this.handleResponseTextOpacityChange(event.target.value)}
+                        />
+                    </label>
+                    <label class="header-control" title="Controls only AI response text color">
+                        <span>AI Color ${this.responseTextColor}</span>
+                        <input
+                            class="header-color"
+                            type="color"
+                            .value=${this.responseTextColor}
+                            @input=${event => this.handleResponseTextColorChange(event.target.value)}
                         />
                     </label>
                     <button
