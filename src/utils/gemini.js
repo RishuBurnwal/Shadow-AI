@@ -3,7 +3,17 @@ const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
 const { getSystemPrompt } = require('./prompts');
-const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, getCredentials, incrementCharUsage, getModelForToday, normalizeLanguageCode } = require('../storage');
+const {
+    getAvailableModel,
+    incrementLimitCount,
+    getApiKey,
+    getGroqApiKey,
+    getCredentials,
+    getPreferences,
+    incrementCharUsage,
+    getModelForToday,
+    normalizeLanguageCode,
+} = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const { getConfiguredProviders, streamWithFallback } = require('./providerRouter');
 const { syncProviderEnvironment } = require('./providerEnv');
@@ -77,6 +87,7 @@ function buildContextMessage() {
 
 // Conversation management functions
 function initializeNewSession(profile = null, customPrompt = null) {
+    const preferences = getPreferences();
     currentSessionId = Date.now().toString();
     currentTranscription = '';
     conversationHistory = [];
@@ -86,14 +97,14 @@ function initializeNewSession(profile = null, customPrompt = null) {
     currentCustomPrompt = customPrompt;
     console.log('New conversation session started:', currentSessionId, 'profile:', profile);
 
-    // Save initial session with profile context
-    if (profile) {
-        sendToRenderer('save-session-context', {
-            sessionId: currentSessionId,
-            profile: profile,
-            customPrompt: customPrompt || '',
-        });
-    }
+    // Save initial metadata for every session, including manually-created ones.
+    sendToRenderer('save-session-context', {
+        sessionId: currentSessionId,
+        profile: profile,
+        customPrompt: customPrompt || '',
+        sessionName: preferences.sessionName || '',
+        sessionNote: preferences.sessionNote || '',
+    });
 }
 
 function saveConversationTurn(transcription, aiResponse) {

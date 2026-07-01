@@ -85,6 +85,26 @@ test('every launch opens directly on the job context onboarding page', () => {
     assert.doesNotMatch(appSource, /config\.onboarded \? 'main' : 'onboarding'/);
     assert.match(onboardingSource, /this\.currentSlide = 1/);
     assert.match(onboardingSource, /placeholder="Resume, job description, notes\.\.\."/);
+    assert.match(onboardingSource, /placeholder="Session name/);
+    assert.match(onboardingSource, /placeholder="Session note/);
+    assert.match(onboardingSource, /updatePreference\('sessionName'/);
+    assert.match(onboardingSource, /updatePreference\('sessionNote'/);
+});
+
+test('session metadata is persisted and history supports edit and individual delete', () => {
+    const storageSource = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
+    const geminiSource = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
+    const historySource = fs.readFileSync(path.join(root, 'src/components/views/HistoryView.js'), 'utf8');
+
+    assert.match(storageSource, /sessionName/);
+    assert.match(storageSource, /sessionNote/);
+    assert.match(storageSource, /Invalid session ID/);
+    assert.match(geminiSource, /sessionName: preferences\.sessionName/);
+    assert.match(geminiSource, /sessionNote: preferences\.sessionNote/);
+    assert.match(historySource, /Edit details/);
+    assert.match(historySource, /Save changes/);
+    assert.match(historySource, /Delete session/);
+    assert.match(historySource, /shadowAI\.storage\.deleteSession\(sessionId\)/);
 });
 
 test('maintained project files contain no legacy product references', () => {

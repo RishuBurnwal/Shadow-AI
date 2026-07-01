@@ -219,7 +219,7 @@ function setupStorageIpcHandlers() {
 
     ipcMain.handle('storage:delete-session', async (event, sessionId) => {
         try {
-            storage.deleteSession(sessionId);
+            if (!storage.deleteSession(sessionId)) return { success: false, error: 'Session was not found.' };
             return { success: true };
         } catch (error) {
             console.error('Error deleting session:', error);
@@ -229,7 +229,7 @@ function setupStorageIpcHandlers() {
 
     ipcMain.handle('storage:delete-all-sessions', async () => {
         try {
-            storage.deleteAllSessions();
+            if (!storage.deleteAllSessions()) return { success: false, error: 'Unable to clear session history.' };
             return { success: true };
         } catch (error) {
             console.error('Error deleting all sessions:', error);

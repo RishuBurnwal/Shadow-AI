@@ -741,6 +741,8 @@ ipcRenderer.on('save-session-context', async (event, data) => {
         await storage.saveSession(data.sessionId, {
             profile: data.profile,
             customPrompt: data.customPrompt,
+            sessionName: data.sessionName,
+            sessionNote: data.sessionNote,
         });
         console.log('Session context saved:', data.sessionId, 'profile:', data.profile);
     } catch (error) {

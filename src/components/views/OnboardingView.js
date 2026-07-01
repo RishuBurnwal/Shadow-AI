@@ -106,6 +106,29 @@ export class OnboardingView extends LitElement {
             border-color: rgba(0, 0, 0, 0.3);
         }
 
+        .session-input,
+        .session-note {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.7);
+            color: #111111;
+            font-size: 13px;
+            text-align: left;
+            resize: vertical;
+        }
+
+        .session-note {
+            min-height: 64px;
+        }
+
+        .session-input:focus,
+        .session-note:focus {
+            outline: none;
+            border-color: rgba(0, 0, 0, 0.3);
+        }
+
         .actions {
             display: flex;
             flex-direction: column;
@@ -147,6 +170,8 @@ export class OnboardingView extends LitElement {
     static properties = {
         currentSlide: { type: Number },
         contextText: { type: String },
+        sessionName: { type: String },
+        sessionNote: { type: String },
         onComplete: { type: Function },
     };
 
@@ -155,6 +180,8 @@ export class OnboardingView extends LitElement {
         // Open directly on the context prompt on every application launch.
         this.currentSlide = 1;
         this.contextText = '';
+        this.sessionName = '';
+        this.sessionNote = '';
         this.onComplete = () => {};
         this._animId = null;
         this._time = 0;
@@ -373,10 +400,20 @@ export class OnboardingView extends LitElement {
         this.contextText = e.target.value;
     }
 
+    handleSessionNameInput(e) {
+        this.sessionName = e.target.value;
+    }
+
+    handleSessionNoteInput(e) {
+        this.sessionNote = e.target.value;
+    }
+
     async completeOnboarding() {
-        if (this.contextText.trim()) {
-            await shadowAI.storage.updatePreference('customPrompt', this.contextText.trim());
-        }
+        await Promise.all([
+            shadowAI.storage.updatePreference('customPrompt', this.contextText.trim()),
+            shadowAI.storage.updatePreference('sessionName', this.sessionName.trim()),
+            shadowAI.storage.updatePreference('sessionNote', this.sessionNote.trim()),
+        ]);
         await shadowAI.storage.updateConfig('onboarded', true);
         this.onComplete();
     }
@@ -404,7 +441,22 @@ export class OnboardingView extends LitElement {
         return html`
             <div class="slide">
                 <div class="slide-title">Add context</div>
-                <div class="slide-text">Paste your resume or any info the AI should know. You can skip this and add it later.</div>
+                <div class="slide-text">Name this session, add a note, and paste the context the AI should know.</div>
+                <input
+                    class="session-input"
+                    type="text"
+                    maxlength="120"
+                    placeholder="Session name (for example: Frontend interview)"
+                    .value=${this.sessionName}
+                    @input=${this.handleSessionNameInput}
+                />
+                <textarea
+                    class="session-note"
+                    maxlength="2000"
+                    placeholder="Session note (optional)"
+                    .value=${this.sessionNote}
+                    @input=${this.handleSessionNoteInput}
+                ></textarea>
                 <textarea
                     class="context-input"
                     placeholder="Resume, job description, notes..."

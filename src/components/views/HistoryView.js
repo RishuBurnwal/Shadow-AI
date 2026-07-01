@@ -87,12 +87,58 @@ export class HistoryView extends LitElement {
                 background: transparent;
                 text-align: left;
                 padding: var(--space-sm) var(--space-md);
-                cursor: pointer;
                 transition: background var(--transition);
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 gap: var(--space-sm);
+            }
+
+            .session-open {
+                min-width: 0;
+                flex: 1;
+                border: none;
+                background: transparent;
+                text-align: left;
+                cursor: pointer;
+            }
+
+            .session-actions {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .session-delete,
+            .detail-action {
+                border: 1px solid var(--border);
+                border-radius: var(--radius-sm);
+                background: transparent;
+                color: var(--text-secondary);
+                padding: 5px 8px;
+                font-size: var(--font-size-xs);
+                cursor: pointer;
+            }
+
+            .session-delete,
+            .detail-action.danger {
+                color: var(--danger, #ef4444);
+                border-color: var(--danger, #ef4444);
+            }
+
+            .session-name {
+                color: var(--text-primary);
+                font-size: var(--font-size-sm);
+                font-weight: 600;
+            }
+
+            .session-note-preview {
+                color: var(--text-muted);
+                font-size: var(--font-size-xs);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                max-width: 440px;
             }
 
             .session-card:hover {
@@ -153,6 +199,27 @@ export class HistoryView extends LitElement {
             .detail-info {
                 color: var(--text-secondary);
                 font-size: var(--font-size-sm);
+            }
+
+            .detail-actions {
+                display: flex;
+                gap: 6px;
+                margin-left: auto;
+            }
+
+            .metadata-editor {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: var(--space-sm);
+                border: 1px solid var(--border);
+                border-radius: var(--radius-sm);
+                background: var(--bg-surface);
+            }
+
+            .metadata-editor textarea {
+                min-height: 80px;
+                resize: vertical;
             }
 
             .tab-row {
@@ -298,6 +365,9 @@ export class HistoryView extends LitElement {
         searchQuery: { type: String },
         clearingHistory: { type: Boolean },
         historyError: { type: String },
+        editingMetadata: { type: Boolean },
+        draftSessionName: { type: String },
+        draftSessionNote: { type: String },
     };
 
     constructor() {
@@ -310,6 +380,9 @@ export class HistoryView extends LitElement {
         this.searchQuery = '';
         this.clearingHistory = false;
         this.historyError = '';
+        this.editingMetadata = false;
+        this.draftSessionName = '';
+        this.draftSessionNote = '';
         this.loadSessions();
     }
 
@@ -333,6 +406,7 @@ export class HistoryView extends LitElement {
                 this.selectedSession = session;
                 this.selectedSessionId = sessionId;
                 this.activeTab = 'conversation';
+                this.editingMetadata = false;
                 this.requestUpdate();
             }
         } catch (error) {
@@ -344,6 +418,7 @@ export class HistoryView extends LitElement {
         this.selectedSession = null;
         this.selectedSessionId = null;
         this.activeTab = 'conversation';
+        this.editingMetadata = false;
     }
 
     handleSearchInput(e) {
@@ -370,6 +445,41 @@ export class HistoryView extends LitElement {
         } finally {
             this.clearingHistory = false;
         }
+    }
+
+    startEditingMetadata() {
+        this.draftSessionName = this.selectedSession?.sessionName || '';
+        this.draftSessionNote = this.selectedSession?.sessionNote || '';
+        this.editingMetadata = true;
+    }
+
+    async saveMetadata() {
+        if (!this.selectedSessionId) return;
+        this.historyError = '';
+        const result = await shadowAI.storage.saveSession(this.selectedSessionId, {
+            sessionName: this.draftSessionName,
+            sessionNote: this.draftSessionNote,
+        });
+        if (!result?.success) {
+            this.historyError = result?.error || 'Unable to update session details.';
+            return;
+        }
+        this.selectedSession = await shadowAI.storage.getSession(this.selectedSessionId);
+        this.editingMetadata = false;
+        await this.loadSessions();
+    }
+
+    async deleteSession(sessionId) {
+        const session = this.sessions.find(item => item.sessionId === sessionId) || this.selectedSession;
+        const label = session?.sessionName || this._getProfileLabel(session || {});
+        if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
+        const result = await shadowAI.storage.deleteSession(sessionId);
+        if (!result?.success) {
+            this.historyError = result?.error || 'Unable to delete session.';
+            return;
+        }
+        if (this.selectedSessionId === sessionId) this.closeSession();
+        await this.loadSessions();
     }
 
     formatDate(timestamp) {
@@ -399,6 +509,7 @@ export class HistoryView extends LitElement {
     }
 
     _getProfileLabel(session) {
+        if (session.sessionName) return session.sessionName;
         if (session.profile) {
             const names = this.getProfileNames();
             return names[session.profile] || session.profile;
@@ -423,7 +534,8 @@ export class HistoryView extends LitElement {
         return this.sessions.filter(session => {
             const preview = this.getSessionPreview(session).toLowerCase();
             const date = this.formatDate(session.createdAt).toLowerCase();
-            return preview.includes(q) || date.includes(q);
+            const metadata = `${session.sessionName || ''} ${session.sessionNote || ''}`.toLowerCase();
+            return preview.includes(q) || date.includes(q) || metadata.includes(q);
         });
     }
 
@@ -472,9 +584,21 @@ export class HistoryView extends LitElement {
 
         const profile = this.selectedSession.profile;
         const prompt = this.selectedSession.customPrompt;
-        if (!profile && !prompt) return html`<div class="empty">No context saved for this session.</div>`;
+        const sessionName = this.selectedSession.sessionName;
+        const sessionNote = this.selectedSession.sessionNote;
+        if (!profile && !prompt && !sessionName && !sessionNote) return html`<div class="empty">No context saved for this session.</div>`;
 
         return html`
+            ${
+                sessionName
+                    ? html`<div class="context-row"><span class="context-key">Name</span><span class="context-value">${sessionName}</span></div>`
+                    : ''
+            }
+            ${
+                sessionNote
+                    ? html`<div class="context-row"><span class="context-key">Note</span><span class="context-value">${sessionNote}</span></div>`
+                    : ''
+            }
             ${
                 profile
                     ? html`
@@ -538,15 +662,21 @@ export class HistoryView extends LitElement {
                         !this.loading
                             ? filteredSessions.map(
                                   session => html`
-                                      <button class="session-card" @click=${() => this.openSession(session.sessionId)}>
-                                          <div class="session-left">
-                                              <span class="session-profile">${this._getProfileLabel(session)}</span>
-                                              <span class="session-date"
-                                                  >${this.formatDate(session.createdAt)} · ${this.formatTime(session.createdAt)}</span
-                                              >
+                                      <div class="session-card">
+                                          <button class="session-open" @click=${() => this.openSession(session.sessionId)}>
+                                              <div class="session-left">
+                                                  <span class="session-name">${this._getProfileLabel(session)}</span>
+                                                  <span class="session-date"
+                                                      >${this.formatDate(session.createdAt)} · ${this.formatTime(session.createdAt)}</span
+                                                  >
+                                                  ${session.sessionNote ? html`<span class="session-note-preview">${session.sessionNote}</span>` : ''}
+                                              </div>
+                                          </button>
+                                          <div class="session-actions">
+                                              ${session.messageCount > 0 ? html`<span class="session-badge">${session.messageCount}</span>` : ''}
+                                              <button class="session-delete" @click=${() => this.deleteSession(session.sessionId)}>Delete</button>
                                           </div>
-                                          ${session.messageCount > 0 ? html`<span class="session-badge">${session.messageCount}</span>` : ''}
-                                      </button>
+                                      </div>
                                   `
                               )
                             : ''
@@ -581,7 +711,37 @@ export class HistoryView extends LitElement {
                     >${this._getProfileLabel(this.selectedSession)} · ${this.formatDate(this.selectedSession.createdAt)} ·
                     ${this.formatTime(this.selectedSession.createdAt)}</span
                 >
+                <div class="detail-actions">
+                    <button class="detail-action" @click=${this.startEditingMetadata}>Edit details</button>
+                    <button class="detail-action danger" @click=${() => this.deleteSession(this.selectedSessionId)}>Delete session</button>
+                </div>
             </div>
+            ${
+                this.editingMetadata
+                    ? html`
+                          <div class="metadata-editor">
+                              <input
+                                  class="control"
+                                  maxlength="120"
+                                  placeholder="Session name"
+                                  .value=${this.draftSessionName}
+                                  @input=${event => (this.draftSessionName = event.target.value)}
+                              />
+                              <textarea
+                                  class="control"
+                                  maxlength="2000"
+                                  placeholder="Session note"
+                                  .value=${this.draftSessionNote}
+                                  @input=${event => (this.draftSessionNote = event.target.value)}
+                              ></textarea>
+                              <div class="detail-actions">
+                                  <button class="detail-action" @click=${this.saveMetadata}>Save changes</button>
+                                  <button class="detail-action" @click=${() => (this.editingMetadata = false)}>Cancel</button>
+                              </div>
+                          </div>
+                      `
+                    : ''
+            }
             <div class="tab-row">
                 <button
                     class="tab-btn ${this.activeTab === 'conversation' ? 'active' : ''}"

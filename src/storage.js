@@ -22,6 +22,8 @@ const DEFAULT_CREDENTIALS = {
 
 const DEFAULT_PREFERENCES = {
     customPrompt: '',
+    sessionName: '',
+    sessionNote: '',
     providerMode: 'byok',
     selectedProfile: 'interview',
     selectedLanguage: 'en-US',
@@ -399,7 +401,16 @@ function getModelForToday() {
 // ============ HISTORY ============
 
 function getSessionPath(sessionId) {
-    return path.join(getHistoryDir(), `${sessionId}.json`);
+    const safeSessionId = String(sessionId || '').trim();
+    if (!/^\d{10,20}$/.test(safeSessionId)) throw new Error('Invalid session ID');
+    return path.join(getHistoryDir(), `${safeSessionId}.json`);
+}
+
+function sanitizeSessionText(value, maxLength) {
+    return String(value ?? '')
+        .replace(/[\u0000-\u001f\u007f]/g, ' ')
+        .trim()
+        .slice(0, maxLength);
 }
 
 function saveSession(sessionId, data) {
@@ -415,6 +426,8 @@ function saveSession(sessionId, data) {
         // Profile context - set once when session starts
         profile: data.profile || existingSession?.profile || null,
         customPrompt: data.customPrompt || existingSession?.customPrompt || null,
+        sessionName: data.sessionName !== undefined ? sanitizeSessionText(data.sessionName, 120) : existingSession?.sessionName || '',
+        sessionNote: data.sessionNote !== undefined ? sanitizeSessionText(data.sessionNote, 2000) : existingSession?.sessionNote || '',
         // Conversation data
         conversationHistory: data.conversationHistory || existingSession?.conversationHistory || [],
         screenAnalysisHistory: data.screenAnalysisHistory || existingSession?.screenAnalysisHistory || [],
@@ -457,6 +470,8 @@ function getAllSessions() {
                         screenAnalysisCount: data.screenAnalysisHistory?.length || 0,
                         profile: data.profile || null,
                         customPrompt: data.customPrompt || null,
+                        sessionName: data.sessionName || '',
+                        sessionNote: data.sessionNote || '',
                     };
                 }
                 return null;
