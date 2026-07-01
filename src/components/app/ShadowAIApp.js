@@ -485,7 +485,7 @@ export class ShadowAIApp extends LitElement {
 
     constructor() {
         super();
-        this.currentView = 'main';
+        this.currentView = 'onboarding';
         this.statusText = '';
         this.startTime = null;
         this.isRecording = false;
@@ -544,7 +544,9 @@ export class ShadowAIApp extends LitElement {
         try {
             const [config, prefs] = await Promise.all([shadowAI.storage.getConfig(), shadowAI.storage.getPreferences()]);
 
-            this.currentView = config.onboarded ? 'main' : 'onboarding';
+            // Context is intentionally requested on every launch so each session
+            // starts with the correct resume, job description, or meeting notes.
+            this.currentView = 'onboarding';
             this.selectedProfile = prefs.selectedProfile || 'interview';
             this.selectedLanguage = prefs.selectedLanguage || 'en-US';
             this.selectedScreenshotInterval = prefs.selectedScreenshotInterval || '5';

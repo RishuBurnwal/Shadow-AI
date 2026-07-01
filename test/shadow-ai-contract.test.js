@@ -77,6 +77,16 @@ test('history exposes confirmed bulk deletion and feedback feature is absent', (
     assert.equal(fs.existsSync(path.join(root, 'src/components/views/FeedbackView.js')), false);
 });
 
+test('every launch opens directly on the job context onboarding page', () => {
+    const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+    const onboardingSource = fs.readFileSync(path.join(root, 'src/components/views/OnboardingView.js'), 'utf8');
+
+    assert.match(appSource, /this\.currentView = 'onboarding'/);
+    assert.doesNotMatch(appSource, /config\.onboarded \? 'main' : 'onboarding'/);
+    assert.match(onboardingSource, /this\.currentSlide = 1/);
+    assert.match(onboardingSource, /placeholder="Resume, job description, notes\.\.\."/);
+});
+
 test('maintained project files contain no legacy product references', () => {
     const legacy = new RegExp(['cheating', 'daddy'].join('[-_\\s]?'), 'i');
     const ignored = new Set(['.git', 'node_modules', 'graphify-out', 'test']);

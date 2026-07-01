@@ -152,7 +152,8 @@ export class OnboardingView extends LitElement {
 
     constructor() {
         super();
-        this.currentSlide = 0;
+        // Open directly on the context prompt on every application launch.
+        this.currentSlide = 1;
         this.contextText = '';
         this.onComplete = () => {};
         this._animId = null;
@@ -390,8 +391,8 @@ export class OnboardingView extends LitElement {
                         <button
                             class="btn-primary"
                             @click=${() => {
-                            this.currentSlide = 1;
-                        }}
+                                this.currentSlide = 1;
+                            }}
                         >
                             Continue
                         </button>
@@ -415,8 +416,8 @@ export class OnboardingView extends LitElement {
                     <button
                         class="btn-back"
                         @click=${() => {
-                        this.currentSlide = 0;
-                    }}
+                            this.currentSlide = 0;
+                        }}
                     >
                         Back
                     </button>
