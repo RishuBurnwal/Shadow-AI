@@ -53,6 +53,10 @@ test('header AI color picker controls only rendered response text and persists',
     const storageSource = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
 
     assert.match(appSource, /type="color"/);
+    assert.match(appSource, /class="header-color-picker"/);
+    assert.match(appSource, /class="header-color-swatch"/);
+    assert.match(appSource, /aria-label="Choose AI response text color"/);
+    assert.ok(appSource.indexOf('class="header-color-picker"') < appSource.indexOf('Controls only AI response text opacity'));
     assert.match(appSource, /handleResponseTextColorChange/);
     assert.match(appSource, /\.responseTextColor=\$\{this\.responseTextColor\}/);
     assert.match(assistantSource, /--ai-response-text-color/);

@@ -61,6 +61,7 @@ export class ShadowAIApp extends LitElement {
             display: flex;
             align-items: center;
             gap: 6px;
+            flex-shrink: 0;
             color: var(--text-secondary);
             font-size: 11px;
             -webkit-app-region: no-drag;
@@ -71,15 +72,44 @@ export class ShadowAIApp extends LitElement {
             cursor: pointer;
         }
 
-        .header-color {
-            width: 30px;
-            height: 26px;
-            padding: 1px;
+        .header-color-picker {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            height: 28px;
+            padding: 0 8px;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
             background: var(--bg-elevated);
+            color: var(--text-primary);
+            font-size: 11px;
             cursor: pointer;
+            flex-shrink: 0;
             -webkit-app-region: no-drag;
+        }
+
+        .header-color-picker:hover {
+            border-color: var(--accent);
+        }
+
+        .header-color-swatch {
+            width: 18px;
+            height: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            border-radius: 4px;
+            background: var(--selected-ai-color);
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+            pointer-events: none;
+        }
+
+        .header-color {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
         }
 
         .passthrough-button {
@@ -1090,11 +1120,13 @@ export class ShadowAIApp extends LitElement {
 
         return html`
             <div class="app-shell">
-                ${this._providerNotification
-                    ? html`<div class="provider-notification ${this._providerNotification.type}" role="status" aria-live="polite">
-                          ${this._providerNotification.message}
-                      </div>`
-                    : ''}
+                ${
+                    this._providerNotification
+                        ? html`<div class="provider-notification ${this._providerNotification.type}" role="status" aria-live="polite">
+                              ${this._providerNotification.message}
+                          </div>`
+                        : ''
+                }
                 <div class="top-drag-bar">
                     <div class="traffic-lights">
                         <button class="traffic-light close" @click=${() => this.handleClose()} title="Close"></button>
@@ -1102,6 +1134,21 @@ export class ShadowAIApp extends LitElement {
                         <button class="traffic-light maximize" title="Maximize"></button>
                     </div>
                     <div class="drag-region"></div>
+                    <label
+                        class="header-color-picker"
+                        title="Choose the AI response text color"
+                        style="--selected-ai-color: ${this.responseTextColor}"
+                    >
+                        <span>AI Color</span>
+                        <span class="header-color-swatch" aria-hidden="true"></span>
+                        <input
+                            class="header-color"
+                            type="color"
+                            aria-label="Choose AI response text color"
+                            .value=${this.responseTextColor}
+                            @input=${event => this.handleResponseTextColorChange(event.target.value)}
+                        />
+                    </label>
                     <label class="header-control" title="Uses the Background Transparency setting">
                         <span>Background ${Math.round(this.backgroundTransparency * 100)}%</span>
                         <input
@@ -1124,15 +1171,6 @@ export class ShadowAIApp extends LitElement {
                             step="0.01"
                             .value=${this.responseTextOpacity}
                             @input=${event => this.handleResponseTextOpacityChange(event.target.value)}
-                        />
-                    </label>
-                    <label class="header-control" title="Controls only AI response text color">
-                        <span>AI Color ${this.responseTextColor}</span>
-                        <input
-                            class="header-color"
-                            type="color"
-                            .value=${this.responseTextColor}
-                            @input=${event => this.handleResponseTextColorChange(event.target.value)}
                         />
                     </label>
                     <button
