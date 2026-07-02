@@ -3,6 +3,7 @@ const PROVIDER_DEFINITIONS = [
         id: 'groq',
         envKey: 'GROQ_API_KEY',
         baseUrl: 'https://api.groq.com/openai/v1',
+        modelsUrl: 'https://api.groq.com/openai/v1/models',
         modelEnv: 'GROQ_MODEL',
         model: 'qwen/qwen3-32b',
         models: ['qwen/qwen3-32b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
@@ -11,6 +12,7 @@ const PROVIDER_DEFINITIONS = [
         id: 'openrouter',
         envKey: 'OPENROUTER_API_KEY',
         baseUrl: 'https://openrouter.ai/api/v1',
+        modelsUrl: 'https://openrouter.ai/api/v1/models',
         modelEnv: 'OPENROUTER_MODEL',
         model: 'openai/gpt-4o-mini',
         models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct'],
@@ -19,6 +21,7 @@ const PROVIDER_DEFINITIONS = [
         id: 'openai',
         envKey: 'OPENAI_API_KEY',
         baseUrl: 'https://api.openai.com/v1',
+        modelsUrl: 'https://api.openai.com/v1/models',
         modelEnv: 'OPENAI_MODEL',
         model: 'gpt-4o-mini',
         models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'],
@@ -27,6 +30,7 @@ const PROVIDER_DEFINITIONS = [
         id: 'perplexity',
         envKey: 'PERPLEXITY_API_KEY',
         baseUrl: 'https://api.perplexity.ai',
+        modelsUrl: 'https://api.perplexity.ai/models',
         modelEnv: 'PERPLEXITY_MODEL',
         model: 'sonar-pro',
         models: ['sonar-pro', 'sonar', 'sonar-deep-research'],
@@ -35,6 +39,7 @@ const PROVIDER_DEFINITIONS = [
         id: 'nvidia',
         envKey: 'NVIDIA_API_KEY',
         baseUrl: 'https://integrate.api.nvidia.com/v1',
+        modelsUrl: 'https://integrate.api.nvidia.com/v1/models',
         modelEnv: 'NVIDIA_MODEL',
         model: 'meta/llama-3.1-70b-instruct',
         models: ['meta/llama-3.1-70b-instruct', 'meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct'],
@@ -46,6 +51,7 @@ const PROVIDER_DEFINITIONS = [
         model: 'gemini-2.5-flash',
         models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
         transport: 'google',
+        modelsUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
     },
 ];
 
@@ -74,7 +80,8 @@ async function fetchProviderModels(provider, fetchImpl = fetch) {
         do {
             const query = new URLSearchParams({ pageSize: '1000' });
             if (pageToken) query.set('pageToken', pageToken);
-            const response = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models?${query}`, {
+            const modelsUrl = provider.modelsUrl || 'https://generativelanguage.googleapis.com/v1beta/models';
+            const response = await fetchImpl(`${modelsUrl}?${query}`, {
                 headers: { 'x-goog-api-key': provider.apiKey },
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -87,7 +94,7 @@ async function fetchProviderModels(provider, fetchImpl = fetch) {
         return normalizeModelIds(models);
     }
 
-    const response = await fetchImpl(`${provider.baseUrl}/models`, {
+    const response = await fetchImpl(provider.modelsUrl || `${provider.baseUrl}/models`, {
         headers: {
             Authorization: `Bearer ${provider.apiKey}`,
             ...(provider.id === 'openrouter' ? { 'HTTP-Referer': 'https://shadow-ai.local', 'X-Title': 'Shadow AI' } : {}),

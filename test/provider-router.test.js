@@ -166,6 +166,28 @@ test('model discovery returns complete provider catalogs without exposing keys',
     assert.equal(JSON.stringify(catalog).includes('secret'), false);
 });
 
+test('every hosted provider has an independent live model-list endpoint', async () => {
+    const { PROVIDER_DEFINITIONS, discoverProviderModels } = require('../src/utils/providerRouter');
+    const requests = [];
+    const providers = PROVIDER_DEFINITIONS.map(provider => ({ ...provider, apiKey: `${provider.id}-secret` }));
+    const fetchImpl = async (url, options) => {
+        const provider = providers.find(item => url.startsWith(item.modelsUrl));
+        assert.ok(provider, `unexpected model endpoint: ${url}`);
+        requests.push({ provider: provider.id, url, headers: options.headers });
+        if (provider.id === 'gemini') {
+            return new Response(JSON.stringify({ models: [{ name: 'models/gemini-live-test', supportedGenerationMethods: ['generateContent'] }] }));
+        }
+        return new Response(JSON.stringify({ data: [{ id: `${provider.id}-live-test` }] }));
+    };
+
+    const catalog = await discoverProviderModels(providers, { fetchImpl, force: true });
+    for (const provider of providers) assert.deepEqual(catalog[provider.id], [`${provider.id}-live-test`]);
+    assert.deepEqual(requests.map(request => request.provider).sort(), providers.map(provider => provider.id).sort());
+    assert.equal(new Set(requests.map(request => request.url.split('?')[0])).size, providers.length);
+    assert.equal(JSON.stringify(requests).includes('-secret?'), false);
+    assert.equal(JSON.stringify(catalog).includes('secret'), false);
+});
+
 test('launcher and environment templates exist without committing .env', () => {
     assert.equal(fs.existsSync(path.join(root, 'main.py')), true);
     assert.equal(fs.existsSync(path.join(root, '.env.example')), true);

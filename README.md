@@ -1,38 +1,36 @@
 # Shadow AI
 
-Shadow AI is a cross-platform Electron desktop assistant that combines live screen context, audio capture, configurable AI providers, and a transparent always-on-top interface.
+Shadow AI is an Electron desktop assistant with live screen and audio context, a transparent always-on-top overlay, session history, and automatic multi-provider AI fallback. A numbered Python launcher handles setup, running, packaging, provider selection, diagnostics, and safe GitHub updates.
 
-The project includes a numbered Python launcher for installation, startup, diagnostics, packaging, provider selection, and safe GitHub updates.
+> Use screen/audio capture and AI assistance only where permitted, and obtain consent before processing other people's audio or content.
 
-> Use Shadow AI only where screen/audio capture and AI assistance are permitted. Obtain consent before recording or processing other people’s audio, meetings, interviews, or presentations.
+## Features
 
-## Highlights
-
-- Live screen and audio context for AI-assisted responses.
-- Automatic provider selection and fallback with safe in-app notifications.
-- Groq, OpenRouter, OpenAI, Perplexity, NVIDIA, and Gemini support.
-- UI-based API key management synchronized with the local `.env` file.
-- Optional local mode using Ollama and Whisper.
-- Interview, sales, meeting, presentation, negotiation, and exam profiles.
-- Transparent always-on-top overlay with independent background opacity, AI-response text opacity, and adjustable response text color.
-- Passthrough mode for interacting with applications behind the overlay.
-- Conversation history, markdown responses, screen analysis, and manual text prompts.
-- Hash-based GitHub updater that validates, rebuilds, and restarts the project.
+- Groq, OpenRouter, OpenAI, Perplexity, NVIDIA, and Google Gemini providers.
+- Live model-list discovery for every configured provider; the header model menu refreshes from the provider API.
+- Automatic fallback order: Groq, OpenRouter, OpenAI, Perplexity, NVIDIA, then Gemini.
+- Provider status in the header: enabled, active, missing key, authentication error, rate limited, credits exhausted, server error, or network error.
+- Missing-key providers remain visible but disabled; provider and model choices persist.
+- API keys can be added in the UI and stay synchronized with the local `.env` file.
+- Independent header controls for background opacity, AI-response text opacity, AI-response color, and passthrough.
+- Named sessions with notes and context, editable history entries, individual deletion, and clear-all history.
+- Manual prompts, screen analysis, markdown responses, shortcuts, and optional local Ollama/Whisper mode.
+- Hash-based, fast-forward-only GitHub updater that rebuilds and restarts after validation.
 
 ## Requirements
 
 | Requirement | Notes |
 | --- | --- |
-| Python | 3.10 or newer recommended |
-| Node.js | 18 or newer |
-| npm | Installed with Node.js |
-| Git | Required for cloning and automatic updates |
-| API access | Gemini for hosted live capture; optional answer-provider keys; or Ollama for local mode |
+| Python | 3.10+ recommended |
+| Node.js | 18+ |
+| npm | Included with Node.js |
+| Git | Required for clone and launcher updates |
+| AI access | At least one hosted API key, or Ollama for local mode |
 | Permissions | Screen capture and microphone/system-audio access |
 
-Windows is the primary verified development platform. macOS uses the bundled `SystemAudioDump` helper for system audio. Linux support uses available display and microphone capture APIs and may vary by desktop environment.
+Windows is the primary verified platform. macOS uses the bundled `SystemAudioDump` helper. Linux capture availability depends on the desktop environment.
 
-## Quick Start
+## Install and run
 
 ```powershell
 git clone https://github.com/RishuBurnwal/Shadow-AI.git
@@ -40,19 +38,9 @@ cd Shadow-AI
 python main.py
 ```
 
-Choose option `1` for the complete installation and setup workflow. It:
+Choose `1` for complete installation and setup. The workflow checks prerequisites, preserves or creates `.env`, installs dependencies, runs tests, and packages the Electron application. Then choose `3` to run Shadow AI.
 
-1. Checks Python, Node.js, npm, and required project files.
-2. Preserves an existing `.env` or creates one from `.env.example`.
-3. Installs npm dependencies.
-4. Runs the automated test suite.
-5. Builds the Electron application package.
-
-After setup, run `python main.py` again and choose option `3` to start Shadow AI.
-
-## Launcher Menu
-
-Running `python main.py` opens the complete project menu:
+### Numbered launcher menu
 
 | Option | Action |
 | ---: | --- |
@@ -66,22 +54,11 @@ Running `python main.py` opens the complete project menu:
 | 8 | Show safe system diagnostics |
 | 0 | Exit |
 
-## API Providers
+No command-line attributes are required for normal use.
 
-Shadow AI discovers configured providers from `.env` and the in-app API manager. In automatic mode, the answer-provider priority is:
+## API configuration
 
-1. Groq
-2. OpenRouter
-3. OpenAI
-4. Perplexity
-5. NVIDIA
-6. Gemini
-
-If a provider fails, times out, or rejects a request, Shadow AI moves to the next configured provider and displays a temporary notification without exposing the API key.
-
-### Environment configuration
-
-The setup workflow creates `.env` automatically when needed. Keys can also be entered from the application’s `Add API` panel.
+The launcher creates `.env` from `.env.example` when needed. Keep only keys in this file; model choices are discovered dynamically and stored as app preferences.
 
 ```dotenv
 SHADOW_AI_PROVIDER=auto
@@ -94,127 +71,101 @@ PERPLEXITY_API_KEY=
 NVIDIA_API_KEY=
 ```
 
-Changes made in the UI are written to `.env`. External `.env` changes are reloaded into runtime and reflected by the UI. The real `.env` file is Git-ignored and excluded from packaged application archives.
+The real `.env` is ignored by Git and excluded from packaged archives. Adding, replacing, or removing a key in the UI updates `.env`; external `.env` changes are reloaded and reflected in the UI.
 
-## Using the Application
+### Provider and model discovery
 
-1. Configure Gemini for a hosted live session, or select local Ollama mode. Add other providers for answer routing and fallback.
-2. Select a session profile and language.
-3. Start a session and grant the requested screen/audio permissions.
-4. Ask questions through captured context, manual text input, or screen analysis.
-5. Use the header controls to adjust the overlay while working.
+| Provider | Key | Model-list request |
+| --- | --- | --- |
+| Groq | `GROQ_API_KEY` | `GET https://api.groq.com/openai/v1/models` |
+| OpenRouter | `OPENROUTER_API_KEY` | `GET https://openrouter.ai/api/v1/models` |
+| OpenAI | `OPENAI_API_KEY` | `GET https://api.openai.com/v1/models` |
+| Perplexity | `PERPLEXITY_API_KEY` | `GET https://api.perplexity.ai/models` |
+| NVIDIA | `NVIDIA_API_KEY` | `GET https://integrate.api.nvidia.com/v1/models` |
+| Gemini | `GEMINI_API_KEY` | paginated `GET https://generativelanguage.googleapis.com/v1beta/models` |
+
+Model discovery runs for every configured API when provider status is loaded. Opening the model selector forces a fresh request; ordinary refreshes use a five-minute cache. Gemini results are limited to models supporting `generateContent`. If a provider rejects or does not expose model discovery, Shadow AI keeps the last successful catalog or a built-in safe fallback so selection does not break.
+
+API keys are sent only in request headers, never placed in model-list URLs, UI status messages, logs, or fallback notifications.
+
+## Application flow
+
+1. Start the app and enter a session name, optional note, profile, and context.
+2. Add at least one API key or select local Ollama mode.
+3. Choose `Auto` or a specific enabled provider in the header.
+4. Open its model selector to refresh all currently available models, then choose one.
+5. Start the session and grant screen/audio permissions.
+6. Ask through captured context, manual text, or screen analysis.
+
+The welcome/session setup page appears at startup. Session names, notes, context, responses, and timestamps appear in History, where sessions can be renamed, edited, individually deleted, or cleared together.
 
 ### Header controls
 
-- **Background** changes the application/background transparency.
-- **AI Text** changes only the rendered AI-response text opacity.
-- **AI Color** opens a color picker that changes only the rendered AI-response text color.
-- **Passthrough** allows mouse interaction with the window behind Shadow AI while keeping the header recoverable.
+- **Provider** selects Auto or a configured provider and shows runtime health.
+- **Model** lists the selected provider's live-discovered models and persists the choice.
+- **Background** controls overlay/background opacity.
+- **AI Text** controls only AI-response text opacity.
+- **AI Color** opens a color picker for response text.
+- **Passthrough** lets the mouse interact with windows behind the overlay while the recoverable header remains available.
 
-Background opacity, response opacity, and response color are stored independently and restored on the next launch.
+## Local mode
 
-## Local AI Mode
+Local mode uses Ollama for responses and `@huggingface/transformers` Whisper models for transcription. Configure the Ollama host/model in the app. The first transcription session may be slower while model assets download.
 
-Local mode uses:
+## Updating safely
 
-- **Ollama** for local text and image-capable model responses.
-- **Whisper** through `@huggingface/transformers` for local transcription.
+Choose launcher option `5`. The updater verifies the expected `RishuBurnwal/Shadow-AI` origin, refuses to overwrite tracked local changes, compares local and remote commit hashes, lists changed files, applies only a fast-forward update, installs dependencies, runs tests, packages the app, and restarts only after validation succeeds. `.env` remains untouched.
 
-Configure the Ollama host and model from the application. Whisper models are downloaded on first use, so the initial local session can take longer to start.
-
-## Audio Capture
-
-| Platform | Capture path |
-| --- | --- |
-| Windows | Electron display capture with loopback/system audio and optional microphone |
-| macOS | Electron screen capture plus the bundled `SystemAudioDump` helper |
-| Linux | Electron display/system capture where available, plus microphone capture |
-
-Audio processing is kept separate from the main UI flow. Local transcription is resampled for Whisper-compatible processing.
-
-## Safe Project Updates
-
-Choose launcher option `5` to update from `RishuBurnwal/Shadow-AI`.
-
-The updater:
-
-1. Verifies that `origin` points to the expected repository.
-2. Refuses to overwrite uncommitted tracked changes.
-3. Fetches the latest `main` branch and compares local and GitHub commit hashes.
-4. Prints the changed-file list when an update exists.
-5. Applies only a fast-forward Git update.
-6. Installs dependencies, runs tests, and rebuilds the package.
-7. Restarts Shadow AI only after validation succeeds.
-
-Local credentials remain untouched because `.env` is not tracked by Git.
-
-## Development
+## Development and verification
 
 ```powershell
 npm install
 npm test
 npm run test:coverage
 npm start
-```
-
-Build a local Electron package with:
-
-```powershell
 npm run package
 ```
 
-Formatting follows `.prettierrc`:
+Tests cover provider priority and fallback, safe notifications, status classification, `.env` synchronization contracts, and independent model-list discovery for all six hosted providers.
 
-```powershell
-npx prettier --write .
-```
-
-## Project Structure
+## Project structure
 
 ```text
 Shadow-AI/
-├── main.py                     # Numbered setup, run, build, and update launcher
-├── forge.config.js             # Electron Forge packaging and security fuses
-├── src/
-│   ├── index.js                # Electron main process and IPC registration
-│   ├── storage.js              # Preferences, credentials, limits, and history
-│   ├── components/             # Lit application shell and views
-│   ├── utils/
-│   │   ├── gemini.js           # Live session and answer-provider integration
-│   │   ├── providerRouter.js   # Provider priority and fallback routing
-│   │   ├── providerEnv.js      # Secure `.env` and UI synchronization
-│   │   ├── localai.js          # Ollama and Whisper local mode
-│   │   └── window.js           # Window, shortcuts, opacity, and passthrough IPC
-│   └── assets/                 # Application icons and bundled runtime assets
-└── test/                       # Node contract and routing tests
+|-- main.py                       # Numbered setup/run/build/update launcher
+|-- forge.config.js               # Electron Forge packaging and security fuses
+|-- src/
+|   |-- index.js                  # Main process and IPC
+|   |-- storage.js                # Preferences, credentials, and history
+|   |-- components/               # Lit UI shell and views
+|   `-- utils/
+|       |-- gemini.js             # Live session and answer integration
+|       |-- providerRouter.js     # Provider fallback and model discovery
+|       |-- providerEnv.js        # .env/UI key synchronization
+|       |-- localai.js            # Ollama and Whisper mode
+|       `-- window.js             # Window, shortcuts, opacity, passthrough
+`-- test/                         # Node contract and routing tests
 ```
 
-## Privacy and Security
+## Privacy and security
 
-- API keys remain local and are never printed by diagnostics or provider notifications.
-- `.env`, build output, caches, logs, and local runtime data are excluded from Git.
-- The packaged Electron archive does not contain the development `.env` file.
-- Electron security fuses disable Node CLI inspection and validate the packaged ASAR.
-- Update operations accept only the configured Shadow AI repository and fast-forward history.
-- Local Ollama/Whisper mode can keep transcription and response processing on the machine.
+- Credentials stay local and are redacted from diagnostics and notifications.
+- `.env`, build output, caches, logs, and runtime data are excluded from Git.
+- Electron security fuses restrict debugging surfaces and validate packaged ASAR integrity.
+- Updates accept only the configured repository and fast-forward history.
+- Ollama/Whisper mode can keep transcription and response processing local.
 
 ## Troubleshooting
 
-### No provider is available
+**No provider is available:** Run `python main.py`, choose option `7`, then add a key in `.env` or the in-app API manager. Missing-key providers are intentionally greyed out.
 
-Run `python main.py` and choose option `7`. Hosted live capture requires Gemini; additional answer providers can be configured through `.env` or the in-app `Add API` panel. Local mode requires a running Ollama instance instead.
+**Models do not refresh:** Confirm the provider key is valid and the network is available, then reopen the header model selector. A failed refresh retains the last successful or built-in fallback list.
 
-### The application does not start
+**App does not start:** Choose launcher option `1` to repair setup or `8` for safe diagnostics. Confirm Node.js and npm are on `PATH`.
 
-Choose option `1` to re-run the complete setup, or option `8` for safe diagnostics. Confirm that Node.js 18+ and npm are available on `PATH`.
+**Local mode cannot connect:** Start Ollama, verify its configured host (default `http://127.0.0.1:11434`), and pull the selected model.
 
-### Local mode cannot connect
-
-Start Ollama, confirm the configured host (default `http://127.0.0.1:11434`), and ensure the selected model has been pulled locally.
-
-### Screen or audio capture fails
-
-Check operating-system privacy permissions for screen recording, microphone access, and system audio capture, then restart the application.
+**Screen/audio capture fails:** Enable operating-system screen-recording, microphone, and system-audio permissions, then restart the app.
 
 ## License
 
