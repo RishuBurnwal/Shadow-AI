@@ -1077,7 +1077,7 @@ const theme = {
 const shadowAI = {
     // App version
     getVersion: async () => ipcRenderer.invoke('get-app-version'),
-    getProviderStatus: async () => ipcRenderer.invoke('get-provider-status'),
+    getProviderStatus: async (forceModels = false) => ipcRenderer.invoke('get-provider-status', forceModels),
     setProviderSelection: async provider => ipcRenderer.invoke('set-provider-selection', provider),
     setProviderModel: async (provider, model) => ipcRenderer.invoke('set-provider-model', provider, model),
     setProviderApiKey: async (provider, apiKey) => ipcRenderer.invoke('set-provider-api-key', provider, apiKey),

@@ -50,6 +50,79 @@ const PROVIDER_DEFINITIONS = [
 ];
 
 const providerHealth = new Map();
+const providerModelCache = new Map();
+const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function normalizeModelIds(values) {
+    return [
+        ...new Set(
+            values
+                .map(value =>
+                    String(value || '')
+                        .replace(/^models\//, '')
+                        .trim()
+                )
+                .filter(value => value && value.length <= 200 && /^[A-Za-z0-9._:/-]+$/.test(value))
+        ),
+    ].sort((a, b) => a.localeCompare(b));
+}
+
+async function fetchProviderModels(provider, fetchImpl = fetch) {
+    if (provider.id === 'gemini') {
+        const models = [];
+        let pageToken = '';
+        do {
+            const query = new URLSearchParams({ pageSize: '1000' });
+            if (pageToken) query.set('pageToken', pageToken);
+            const response = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models?${query}`, {
+                headers: { 'x-goog-api-key': provider.apiKey },
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            for (const model of payload.models || []) {
+                if ((model.supportedGenerationMethods || []).includes('generateContent')) models.push(model.name);
+            }
+            pageToken = payload.nextPageToken || '';
+        } while (pageToken);
+        return normalizeModelIds(models);
+    }
+
+    const response = await fetchImpl(`${provider.baseUrl}/models`, {
+        headers: {
+            Authorization: `Bearer ${provider.apiKey}`,
+            ...(provider.id === 'openrouter' ? { 'HTTP-Referer': 'https://shadow-ai.local', 'X-Title': 'Shadow AI' } : {}),
+        },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    return normalizeModelIds((payload.data || payload.models || []).map(model => model.id || model.name));
+}
+
+async function discoverProviderModels(providers, { fetchImpl = fetch, force = false } = {}) {
+    const catalog = {};
+    await Promise.all(
+        providers.map(async provider => {
+            const cached = providerModelCache.get(provider.id);
+            if (!force && cached && Date.now() - cached.fetchedAt < MODEL_CACHE_TTL_MS) {
+                catalog[provider.id] = cached.models;
+                return;
+            }
+            try {
+                const models = await fetchProviderModels(provider, fetchImpl);
+                if (!models.length) throw new Error('No compatible models returned');
+                providerModelCache.set(provider.id, { models, fetchedAt: Date.now() });
+                catalog[provider.id] = models;
+            } catch {
+                catalog[provider.id] = cached?.models?.length ? cached.models : provider.models;
+            }
+        })
+    );
+    return catalog;
+}
+
+function getCachedProviderModels(provider) {
+    return providerModelCache.get(provider)?.models || null;
+}
 
 function classifyProviderFailure(error, status = 0) {
     const detail = `${String(error?.message || error || '')} ${String(error?.providerDetail || '')}`.toLowerCase();
@@ -190,4 +263,6 @@ module.exports = {
     markProviderSuccess,
     markProviderFailure,
     getProviderRuntimeStatus,
+    discoverProviderModels,
+    getCachedProviderModels,
 };

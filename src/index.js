@@ -7,7 +7,7 @@ const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const storage = require('./storage');
 const providerEnv = require('./utils/providerEnv');
-const { PROVIDER_DEFINITIONS, getProviderRuntimeStatus } = require('./utils/providerRouter');
+const { PROVIDER_DEFINITIONS, getProviderRuntimeStatus, getConfiguredProviders, discoverProviderModels } = require('./utils/providerRouter');
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
@@ -290,8 +290,22 @@ function setupGeneralIpcHandlers() {
     }
     applyProviderModels(providerModels);
 
-    ipcMain.handle('get-provider-status', async () => {
+    ipcMain.handle('get-provider-status', async (event, forceModels = false) => {
         const configured = providerEnv.getProviderStatus();
+        const discoveredModels = await discoverProviderModels(getConfiguredProviders(), { force: forceModels === true });
+        const currentPreferences = storage.getPreferences();
+        const selectedModels = { ...(currentPreferences.providerModels || {}) };
+        let selectionChanged = false;
+        for (const definition of PROVIDER_DEFINITIONS) {
+            const models = discoveredModels[definition.id] || definition.models;
+            const selectedModel = process.env[definition.modelEnv] || selectedModels[definition.id] || definition.model;
+            if (configured[definition.id] && models.length && !models.includes(selectedModel)) {
+                process.env[definition.modelEnv] = models[0];
+                selectedModels[definition.id] = models[0];
+                selectionChanged = true;
+            }
+        }
+        if (selectionChanged) storage.updatePreference('providerModels', selectedModels);
         return {
             ...configured,
             selected: storage.getPreferences().answerProvider || initialSelection,
@@ -303,7 +317,7 @@ function setupGeneralIpcHandlers() {
                         provider,
                         {
                             ...status,
-                            models: definition.models,
+                            models: discoveredModels[provider] || definition.models,
                             selectedModel: process.env[definition.modelEnv] || definition.model,
                         },
                     ];
@@ -328,7 +342,12 @@ function setupGeneralIpcHandlers() {
     ipcMain.handle('set-provider-model', async (event, provider, model) => {
         try {
             const definition = providersById.get(String(provider || '').toLowerCase());
-            if (!definition || !definition.models.includes(model)) return { success: false, error: 'Unsupported model selection.' };
+            if (!definition) return { success: false, error: 'Unsupported provider.' };
+            providerEnv.getProviderStatus();
+            const configuredProvider = getConfiguredProviders().find(item => item.id === definition.id);
+            if (!configuredProvider) return { success: false, error: 'API key is not configured.' };
+            const catalog = await discoverProviderModels([configuredProvider], { force: true });
+            if (!catalog[definition.id]?.includes(model)) return { success: false, error: 'Model is no longer available for this API.' };
             const preferences = storage.getPreferences();
             const providerModels = { ...(preferences.providerModels || {}) };
             delete providerModels.gemma;

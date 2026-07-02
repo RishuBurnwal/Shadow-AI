@@ -45,6 +45,7 @@ test('persistent header owns the shared background transparency and passthrough 
     assert.match(appSource, /aria-label="AI model selection"/);
     assert.match(indexSource, /set-provider-model/);
     assert.match(rendererSource, /setProviderModel/);
+    assert.match(appSource, /@focus=\$\{\(\) => this\.loadProviderStatus\(true\)\}/);
 });
 
 test('header AI text opacity controls only the rendered response content', () => {

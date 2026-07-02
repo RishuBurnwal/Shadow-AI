@@ -137,6 +137,35 @@ test('Gemini uses the Gemini key status and providers expose selectable models',
     assert.ok(PROVIDER_DEFINITIONS.every(provider => provider.models.includes(provider.model)));
 });
 
+test('model discovery returns complete provider catalogs without exposing keys', async () => {
+    const { discoverProviderModels } = require('../src/utils/providerRouter');
+    const requests = [];
+    const providers = [
+        { id: 'openai', apiKey: 'openai-secret', baseUrl: 'https://openai.test/v1', models: ['fallback'] },
+        { id: 'gemini', apiKey: 'gemini-secret', models: ['fallback'] },
+    ];
+    const fetchImpl = async (url, options) => {
+        requests.push({ url, headers: options.headers });
+        if (url.includes('generativelanguage')) {
+            return new Response(
+                JSON.stringify({
+                    models: [
+                        { name: 'models/gemini-z', supportedGenerationMethods: ['generateContent'] },
+                        { name: 'models/embedding-only', supportedGenerationMethods: ['embedContent'] },
+                    ],
+                })
+            );
+        }
+        return new Response(JSON.stringify({ data: [{ id: 'gpt-z' }, { id: 'gpt-a' }] }));
+    };
+    const catalog = await discoverProviderModels(providers, { fetchImpl, force: true });
+    assert.deepEqual(catalog.openai, ['gpt-a', 'gpt-z']);
+    assert.deepEqual(catalog.gemini, ['gemini-z']);
+    assert.equal(requests[0].url.includes('secret'), false);
+    assert.equal(requests[1].url.includes('secret'), false);
+    assert.equal(JSON.stringify(catalog).includes('secret'), false);
+});
+
 test('launcher and environment templates exist without committing .env', () => {
     assert.equal(fs.existsSync(path.join(root, 'main.py')), true);
     assert.equal(fs.existsSync(path.join(root, '.env.example')), true);

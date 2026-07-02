@@ -696,9 +696,9 @@ export class ShadowAIApp extends LitElement {
         }
     }
 
-    async loadProviderStatus() {
+    async loadProviderStatus(forceModels = false) {
         try {
-            this._providerStatus = await shadowAI.getProviderStatus();
+            this._providerStatus = await shadowAI.getProviderStatus(forceModels);
         } catch {
             // Keep the last known safe snapshot while IPC is unavailable.
         }
@@ -709,7 +709,7 @@ export class ShadowAIApp extends LitElement {
         if (!result?.success) {
             this.showProviderNotification({ type: 'warning', message: result?.error || 'Unable to select provider.' });
         }
-        await this.loadProviderStatus();
+        await this.loadProviderStatus(true);
     }
 
     async handleProviderModelSelection(provider, model) {
@@ -1254,6 +1254,7 @@ export class ShadowAIApp extends LitElement {
                         title=${modelProvider ? `Model for ${modelProvider}` : 'Select an individual provider to choose a model'}
                         ?disabled=${!modelProvider || !modelStatus?.configured}
                         .value=${modelStatus?.selectedModel || ''}
+                        @focus=${() => this.loadProviderStatus(true)}
                         @change=${event => this.handleProviderModelSelection(modelProvider, event.target.value)}
                     >
                         ${
