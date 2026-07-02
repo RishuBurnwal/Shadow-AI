@@ -53,7 +53,7 @@ function normalizeLanguageCode(value) {
 const DEFAULT_KEYBINDS = null; // null means use system defaults
 
 const DEFAULT_LIMITS = {
-    data: [], // Array of { date: 'YYYY-MM-DD', flash: { count }, flashLite: { count }, groq: { 'qwen3-32b': { chars, limit }, 'gpt-oss-120b': { chars, limit }, 'gpt-oss-20b': { chars, limit } }, gemini: { 'gemma-3-27b-it': { chars } } }
+    data: [], // Daily provider/model usage counters.
 };
 
 // Get the config directory path based on OS
@@ -289,7 +289,7 @@ function getTodayLimits() {
         }
         if (!todayEntry.gemini) {
             todayEntry.gemini = {
-                'gemma-3-27b-it': { chars: 0 },
+                'gemini-2.5-flash': { chars: 0 },
             };
         }
         setLimits(limits);
@@ -309,7 +309,7 @@ function getTodayLimits() {
             'kimi-k2-instruct': { chars: 0, limit: 600000 },
         },
         gemini: {
-            'gemma-3-27b-it': { chars: 0 },
+            'gemini-2.5-flash': { chars: 0 },
         },
     };
     limits.data.push(newEntry);
@@ -357,7 +357,8 @@ function incrementCharUsage(provider, model, charCount) {
     const today = getTodayDateString();
     const todayEntry = limits.data.find(entry => entry.date === today);
 
-    if (todayEntry[provider] && todayEntry[provider][model]) {
+    if (todayEntry[provider]) {
+        if (!todayEntry[provider][model]) todayEntry[provider][model] = { chars: 0 };
         todayEntry[provider][model].chars += charCount;
         setLimits(limits);
     }

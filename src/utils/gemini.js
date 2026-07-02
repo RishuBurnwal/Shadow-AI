@@ -217,7 +217,7 @@ function hasGroqKey() {
     return key && key.trim() != '';
 }
 
-function trimConversationHistoryForGemma(history, maxChars = 42000) {
+function trimConversationHistoryForGemini(history, maxChars = 42000) {
     if (!history || history.length === 0) return [];
     let totalChars = 0;
     const trimmed = [];
@@ -352,7 +352,7 @@ async function sendToGroq(transcription) {
     }
 }
 
-async function sendToGemma(transcription, appendUser = true) {
+async function sendToGeminiText(transcription, appendUser = true) {
     const apiKey = getApiKey();
     if (!apiKey) {
         console.log('No Gemini API key configured');
@@ -360,12 +360,12 @@ async function sendToGemma(transcription, appendUser = true) {
     }
 
     if (!transcription || transcription.trim() === '') {
-        console.log('Empty transcription, skipping Gemma');
+        console.log('Empty transcription, skipping Gemini');
         return;
     }
 
-    const modelToUse = process.env.GEMMA_MODEL || 'gemma-3-27b-it';
-    console.log(`Sending to Gemma (${modelToUse}):`, transcription.substring(0, 100) + '...');
+    const modelToUse = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    console.log(`Sending to Gemini (${modelToUse}):`, transcription.substring(0, 100) + '...');
 
     if (appendUser) {
         groqConversationHistory.push({
@@ -374,7 +374,7 @@ async function sendToGemma(transcription, appendUser = true) {
         });
     }
 
-    const trimmedHistory = trimConversationHistoryForGemma(groqConversationHistory, 42000);
+    const trimmedHistory = trimConversationHistoryForGemini(groqConversationHistory, 42000);
 
     try {
         const ai = new GoogleGenAI({ apiKey: apiKey });
@@ -428,14 +428,14 @@ async function sendToGemma(transcription, appendUser = true) {
             saveConversationTurn(transcription, fullText);
         }
 
-        console.log('Gemma response completed');
-        markProviderSuccess('gemma');
+        console.log('Gemini response completed');
+        markProviderSuccess('gemini');
         sendToRenderer('update-status', 'Listening...');
-        return { provider: 'gemma', model: modelToUse, text: fullText };
+        return { provider: 'gemini', model: modelToUse, text: fullText };
     } catch (error) {
-        markProviderFailure('gemma', error, error.status || 0);
-        console.error('Error calling Gemma API:', error);
-        sendToRenderer('update-status', 'Gemma error: ' + error.message);
+        markProviderFailure('gemini', error, error.status || 0);
+        console.error('Error calling Gemini API:', error);
+        sendToRenderer('update-status', 'Gemini error: ' + error.message);
         throw error;
     }
 }
@@ -458,19 +458,19 @@ async function sendToAnswerProvider(transcription) {
         provider.id === 'groq' && !process.env.GROQ_MODEL ? { ...provider, model: getModelForToday() || provider.model } : provider
     );
 
-    if (providers[0]?.id === 'gemma') {
+    if (providers[0]?.id === 'gemini') {
         try {
-            sendToRenderer('provider-notification', { type: 'success', message: 'Using Gemma.' });
-            return await sendToGemma(transcription);
+            sendToRenderer('provider-notification', { type: 'success', message: 'Using Gemini.' });
+            return await sendToGeminiText(transcription);
         } catch (error) {
-            sendToRenderer('provider-notification', { type: 'warning', message: 'Gemma unavailable. Switching to hosted fallback.' });
+            sendToRenderer('provider-notification', { type: 'warning', message: 'Gemini unavailable. Switching to hosted fallback.' });
             const lastMessage = groqConversationHistory.at(-1);
             if (lastMessage?.role === 'user' && lastMessage.content === transcription.trim()) groqConversationHistory.pop();
         }
     }
 
     if (!genericProviders.some(provider => provider.transport === 'openai')) {
-        return sendToGemma(transcription);
+        return sendToGeminiText(transcription);
     }
 
     groqConversationHistory.push({ role: 'user', content: transcription.trim() });
@@ -513,10 +513,10 @@ async function sendToAnswerProvider(transcription) {
         return result;
     } catch (error) {
         console.warn('Hosted answer providers failed:', error.failures || error.message);
-        if (providers.some(provider => provider.id === 'gemma')) {
-            sendToRenderer('provider-notification', { type: 'warning', message: 'Hosted providers unavailable. Switching to Gemma.' });
+        if (providers.some(provider => provider.id === 'gemini')) {
+            sendToRenderer('provider-notification', { type: 'warning', message: 'Hosted providers unavailable. Switching to Gemini.' });
             try {
-                return await sendToGemma(transcription, false);
+                return await sendToGeminiText(transcription, false);
             } catch {
                 sendToRenderer('provider-notification', { type: 'warning', message: 'Every configured answer provider is currently unavailable.' });
             }

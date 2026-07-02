@@ -16,7 +16,7 @@ PROVIDERS = {
     "openai": "OPENAI_API_KEY",
     "perplexity": "PERPLEXITY_API_KEY",
     "nvidia": "NVIDIA_API_KEY",
-    "gemma": "GEMINI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
 }
 REQUIRED_FILES = (
     "package.json",

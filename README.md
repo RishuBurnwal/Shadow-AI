@@ -10,7 +10,7 @@ The project includes a numbered Python launcher for installation, startup, diagn
 
 - Live screen and audio context for AI-assisted responses.
 - Automatic provider selection and fallback with safe in-app notifications.
-- Groq, OpenRouter, OpenAI, Perplexity, NVIDIA, and Gemini/Gemma support.
+- Groq, OpenRouter, OpenAI, Perplexity, NVIDIA, and Gemini support.
 - UI-based API key management synchronized with the local `.env` file.
 - Optional local mode using Ollama and Whisper.
 - Interview, sales, meeting, presentation, negotiation, and exam profiles.
@@ -75,7 +75,7 @@ Shadow AI discovers configured providers from `.env` and the in-app API manager.
 3. OpenAI
 4. Perplexity
 5. NVIDIA
-6. Gemma through the Gemini key
+6. Gemini
 
 If a provider fails, times out, or rejects a request, Shadow AI moves to the next configured provider and displays a temporary notification without exposing the API key.
 

@@ -40,12 +40,11 @@ const PROVIDER_DEFINITIONS = [
         models: ['meta/llama-3.1-70b-instruct', 'meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct'],
     },
     {
-        id: 'gemma',
-        statusKey: 'gemini',
+        id: 'gemini',
         envKey: 'GEMINI_API_KEY',
-        modelEnv: 'GEMMA_MODEL',
-        model: 'gemma-3-27b-it',
-        models: ['gemma-3-27b-it', 'gemma-3-12b-it', 'gemma-3-4b-it'],
+        modelEnv: 'GEMINI_MODEL',
+        model: 'gemini-2.5-flash',
+        models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
         transport: 'google',
     },
 ];
@@ -78,8 +77,8 @@ function markProviderFailure(provider, error, status = 0) {
 
 function getProviderRuntimeStatus(configured = {}) {
     return Object.fromEntries(
-        PROVIDER_DEFINITIONS.map(({ id, statusKey = id }) => {
-            if (!configured[statusKey]) return [id, { configured: false, state: 'disabled', message: 'API key missing', updatedAt: null }];
+        PROVIDER_DEFINITIONS.map(({ id }) => {
+            if (!configured[id]) return [id, { configured: false, state: 'disabled', message: 'API key missing', updatedAt: null }];
             return [id, { configured: true, ...(providerHealth.get(id) || { state: 'enabled', message: 'Enabled', updatedAt: null }) }];
         })
     );

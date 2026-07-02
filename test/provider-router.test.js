@@ -18,7 +18,7 @@ test('auto provider priority matches the launcher contract', () => {
 
     assert.deepEqual(
         providers.map(provider => provider.id),
-        ['groq', 'openrouter', 'openai', 'perplexity', 'nvidia', 'gemma']
+        ['groq', 'openrouter', 'openai', 'perplexity', 'nvidia', 'gemini']
     );
 });
 
@@ -127,13 +127,13 @@ test('provider health classifies runtime failures and disables missing keys', as
     });
 });
 
-test('Gemma uses the Gemini key status and providers expose selectable models', () => {
+test('Gemini uses the Gemini key status and providers expose selectable models', () => {
     const { PROVIDER_DEFINITIONS, getProviderRuntimeStatus } = require('../src/utils/providerRouter');
     const status = getProviderRuntimeStatus({ gemini: true });
-    const gemma = PROVIDER_DEFINITIONS.find(provider => provider.id === 'gemma');
-    assert.equal(status.gemma.configured, true);
-    assert.equal(status.gemma.state, 'enabled');
-    assert.ok(gemma.models.includes('gemma-3-27b-it'));
+    const gemini = PROVIDER_DEFINITIONS.find(provider => provider.id === 'gemini');
+    assert.equal(status.gemini.configured, true);
+    assert.equal(status.gemini.state, 'enabled');
+    assert.ok(gemini.models.includes('gemini-2.5-flash'));
     assert.ok(PROVIDER_DEFINITIONS.every(provider => provider.models.includes(provider.model)));
 });
 
@@ -144,6 +144,8 @@ test('launcher and environment templates exist without committing .env', () => {
     assert.match(fs.readFileSync(path.join(root, 'main.py'), 'utf8'), /--provider/);
     assert.doesNotMatch(fs.readFileSync(path.join(root, 'main.py'), 'utf8'), /add_argument\(["']provider["']/);
     assert.match(fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8'), /provider-notification/);
+    assert.doesNotMatch(fs.readFileSync(path.join(root, '.env.example'), 'utf8'), /^[A-Z]+_MODEL=/m);
+    assert.match(fs.readFileSync(path.join(root, 'main.py'), 'utf8'), /"gemini": "GEMINI_API_KEY"/);
 });
 
 test('main launcher exposes a numbered menu and complete idempotent setup workflow', () => {

@@ -16,7 +16,8 @@ const providerIds = new Set(PROVIDER_DEFINITIONS.map(provider => provider.id));
 const providersById = new Map(PROVIDER_DEFINITIONS.map(provider => [provider.id, provider]));
 
 function applyProviderSelection(selection) {
-    const normalized = String(selection || 'default').toLowerCase();
+    const requested = String(selection || 'default').toLowerCase();
+    const normalized = requested === 'gemma' ? 'gemini' : requested;
     if (normalized === 'default') process.env.SHADOW_AI_PROVIDER = providerIds.has(launchProvider) ? launchProvider : 'auto';
     else if (normalized === 'auto' || providerIds.has(normalized)) process.env.SHADOW_AI_PROVIDER = normalized;
     else throw new Error('Unsupported provider selection');
@@ -281,7 +282,13 @@ function setupStorageIpcHandlers() {
 function setupGeneralIpcHandlers() {
     const preferences = storage.getPreferences();
     const initialSelection = applyProviderSelection(preferences.answerProvider || 'default');
-    applyProviderModels(preferences.providerModels || {});
+    if (preferences.answerProvider === 'gemma') storage.updatePreference('answerProvider', 'gemini');
+    const providerModels = { ...(preferences.providerModels || {}) };
+    if (Object.hasOwn(providerModels, 'gemma')) {
+        delete providerModels.gemma;
+        storage.updatePreference('providerModels', providerModels);
+    }
+    applyProviderModels(providerModels);
 
     ipcMain.handle('get-provider-status', async () => {
         const configured = providerEnv.getProviderStatus();
@@ -323,7 +330,9 @@ function setupGeneralIpcHandlers() {
             const definition = providersById.get(String(provider || '').toLowerCase());
             if (!definition || !definition.models.includes(model)) return { success: false, error: 'Unsupported model selection.' };
             const preferences = storage.getPreferences();
-            const providerModels = { ...(preferences.providerModels || {}), [definition.id]: model };
+            const providerModels = { ...(preferences.providerModels || {}) };
+            delete providerModels.gemma;
+            providerModels[definition.id] = model;
             storage.updatePreference('providerModels', providerModels);
             process.env[definition.modelEnv] = model;
             return { success: true };
