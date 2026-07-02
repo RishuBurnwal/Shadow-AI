@@ -38,15 +38,15 @@ cd Shadow-AI
 python main.py
 ```
 
-Choose `1` for complete installation and setup. The workflow checks prerequisites, preserves or creates `.env`, installs dependencies, runs tests, and packages the Electron application. Then choose `3` to run Shadow AI.
+On a fresh checkout, choose `2` for complete installation and setup. The workflow checks prerequisites, preserves or creates `.env`, installs dependencies, runs tests, and packages the Electron application. For normal use, choose `1` or simply press Enter to run Shadow AI.
 
 ### Numbered launcher menu
 
 | Option | Action |
 | ---: | --- |
-| 1 | Complete installation and setup |
-| 2 | Install or update dependencies |
-| 3 | Run project |
+| 1 | Run project (default when Enter is pressed) |
+| 2 | Complete installation and setup |
+| 3 | Install or update dependencies |
 | 4 | Build application package |
 | 5 | Update project from GitHub |
 | 6 | Select API provider and launch |
@@ -62,6 +62,7 @@ The launcher creates `.env` from `.env.example` when needed. Keep only keys in t
 
 ```dotenv
 SHADOW_AI_PROVIDER=auto
+SHADOW_AI_SILENT=true
 
 GEMINI_API_KEY=
 GROQ_API_KEY=
@@ -72,6 +73,8 @@ NVIDIA_API_KEY=
 ```
 
 The real `.env` is ignored by Git and excluded from packaged archives. Adding, replacing, or removing a key in the UI updates `.env`; external `.env` changes are reloaded and reflected in the UI.
+
+Set `SHADOW_AI_SILENT=true` to launch Electron without an npm/Command Prompt window. Set it to `false` when you want a visible terminal for live startup logs. The setting is read from `.env` on every launcher start; values other than `true` or `false` safely fall back to silent mode with a warning.
 
 ### Provider and model discovery
 

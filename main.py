@@ -29,6 +29,7 @@ REQUIRED_FILES = (
 MINIMUM_NODE_MAJOR = 18
 UPDATE_REPOSITORY = "https://github.com/RishuBurnwal/Shadow-AI.git"
 UPDATE_BRANCH = "main"
+SILENT_MODE_ENV = "SHADOW_AI_SILENT"
 
 
 def load_env(path: Path) -> None:
@@ -47,6 +48,14 @@ def load_env(path: Path) -> None:
 
 def configured_providers() -> list[str]:
     return [name for name, env_key in PROVIDERS.items() if os.environ.get(env_key, "").strip()]
+
+
+def silent_mode_enabled() -> bool:
+    value = os.environ.get(SILENT_MODE_ENV, "true").strip().lower()
+    if value not in {"true", "false"}:
+        print(f"WARNING: {SILENT_MODE_ENV} must be true or false; using true.", file=sys.stderr)
+        return True
+    return value == "true"
 
 
 def npm_command() -> str:
@@ -217,27 +226,27 @@ def interactive_menu() -> int:
     print("\n========================================")
     print("          Shadow AI Project Menu")
     print("========================================")
-    print("  1. Complete installation and setup")
-    print("  2. Install or update dependencies")
-    print("  3. Run project")
+    print("  1. Run project (default)")
+    print("  2. Complete installation and setup")
+    print("  3. Install or update dependencies")
     print("  4. Build application package")
     print("  5. Update project from GitHub")
     print("  6. Select API provider and launch")
     print("  7. Show API provider status")
     print("  8. Show system diagnostics")
     print("  0. Exit")
-    selection = input("\nChoose option number: ").strip()
+    selection = input("\nChoose option number [1]: ").strip() or "1"
 
     if selection == "0":
         print("Goodbye.")
         return 0
     if selection == "1":
-        return setup_project(menu_args())
+        return launch(menu_args())
     if selection == "2":
+        return setup_project(menu_args())
+    if selection == "3":
         ensure_env_file()
         return run_npm_task(["install"], "Installing Shadow AI dependencies...")
-    if selection == "3":
-        return launch(menu_args())
     if selection == "4":
         return run_npm_task(["run", "package"], "Building Shadow AI package...")
     if selection == "5":
@@ -300,7 +309,7 @@ def setup_project(args: argparse.Namespace) -> int:
         print("configured providers: " + (", ".join(available) if available else "none"))
         if not available:
             print("Next: add at least one API key in .env or through the Shadow AI UI.")
-        print("Launch: run python main.py, then choose menu option 5 or 6.")
+        print("Launch: run python main.py and press Enter, or choose menu option 6 for a specific provider.")
         return 0
     except RuntimeError as error:
         print(f"SETUP ERROR: {error}", file=sys.stderr)
@@ -344,18 +353,19 @@ def launch(args: argparse.Namespace) -> int:
     if args.wait:
         return subprocess.run(command, cwd=ROOT, check=False, env=os.environ.copy()).returncode
 
+    silent = silent_mode_enabled()
     creationflags = 0
     if os.name == "nt":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        creationflags = subprocess.CREATE_NO_WINDOW if silent else subprocess.CREATE_NEW_CONSOLE
     subprocess.Popen(
         command,
         cwd=ROOT,
         env=os.environ.copy(),
         creationflags=creationflags,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL if silent else None,
+        stderr=subprocess.DEVNULL if silent else None,
     )
-    print("Shadow AI started")
+    print(f"Shadow AI started ({'silent' if silent else 'visible terminal'} mode)")
     return 0
 
 

@@ -197,13 +197,16 @@ test('launcher and environment templates exist without committing .env', () => {
     assert.match(fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8'), /provider-notification/);
     assert.doesNotMatch(fs.readFileSync(path.join(root, '.env.example'), 'utf8'), /^[A-Z]+_MODEL=/m);
     assert.match(fs.readFileSync(path.join(root, 'main.py'), 'utf8'), /"gemini": "GEMINI_API_KEY"/);
+    assert.match(fs.readFileSync(path.join(root, '.env.example'), 'utf8'), /^SHADOW_AI_SILENT=true$/m);
 });
 
 test('main launcher exposes a numbered menu and complete idempotent setup workflow', () => {
     const launcher = fs.readFileSync(path.join(root, 'main.py'), 'utf8');
     assert.match(launcher, /def interactive_menu\(\)/);
-    assert.match(launcher, /Complete installation and setup/);
-    assert.match(launcher, /3\. Run project/);
+    assert.match(launcher, /1\. Run project \(default\)/);
+    assert.match(launcher, /2\. Complete installation and setup/);
+    assert.match(launcher, /input\("\\nChoose option number \[1\]: "\)\.strip\(\) or "1"/);
+    assert.match(launcher, /subprocess\.CREATE_NO_WINDOW if silent else subprocess\.CREATE_NEW_CONSOLE/);
     assert.doesNotMatch(launcher, /Run project tests/);
     assert.match(launcher, /5\. Update project from GitHub/);
     assert.match(launcher, /Select API provider and launch/);
