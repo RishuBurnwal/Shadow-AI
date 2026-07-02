@@ -1,19 +1,35 @@
 const PROVIDER_DEFINITIONS = [
-    { id: 'groq', envKey: 'GROQ_API_KEY', baseUrl: 'https://api.groq.com/openai/v1', modelEnv: 'GROQ_MODEL', model: 'qwen/qwen3-32b' },
+    {
+        id: 'groq',
+        envKey: 'GROQ_API_KEY',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        modelEnv: 'GROQ_MODEL',
+        model: 'qwen/qwen3-32b',
+        models: ['qwen/qwen3-32b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
+    },
     {
         id: 'openrouter',
         envKey: 'OPENROUTER_API_KEY',
         baseUrl: 'https://openrouter.ai/api/v1',
         modelEnv: 'OPENROUTER_MODEL',
         model: 'openai/gpt-4o-mini',
+        models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct'],
     },
-    { id: 'openai', envKey: 'OPENAI_API_KEY', baseUrl: 'https://api.openai.com/v1', modelEnv: 'OPENAI_MODEL', model: 'gpt-4o-mini' },
+    {
+        id: 'openai',
+        envKey: 'OPENAI_API_KEY',
+        baseUrl: 'https://api.openai.com/v1',
+        modelEnv: 'OPENAI_MODEL',
+        model: 'gpt-4o-mini',
+        models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'],
+    },
     {
         id: 'perplexity',
         envKey: 'PERPLEXITY_API_KEY',
         baseUrl: 'https://api.perplexity.ai',
         modelEnv: 'PERPLEXITY_MODEL',
         model: 'sonar-pro',
+        models: ['sonar-pro', 'sonar', 'sonar-deep-research'],
     },
     {
         id: 'nvidia',
@@ -21,8 +37,17 @@ const PROVIDER_DEFINITIONS = [
         baseUrl: 'https://integrate.api.nvidia.com/v1',
         modelEnv: 'NVIDIA_MODEL',
         model: 'meta/llama-3.1-70b-instruct',
+        models: ['meta/llama-3.1-70b-instruct', 'meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct'],
     },
-    { id: 'gemma', envKey: 'GEMINI_API_KEY', modelEnv: 'GEMMA_MODEL', model: 'gemma-3-27b-it', transport: 'google' },
+    {
+        id: 'gemma',
+        statusKey: 'gemini',
+        envKey: 'GEMINI_API_KEY',
+        modelEnv: 'GEMMA_MODEL',
+        model: 'gemma-3-27b-it',
+        models: ['gemma-3-27b-it', 'gemma-3-12b-it', 'gemma-3-4b-it'],
+        transport: 'google',
+    },
 ];
 
 const providerHealth = new Map();
@@ -53,8 +78,8 @@ function markProviderFailure(provider, error, status = 0) {
 
 function getProviderRuntimeStatus(configured = {}) {
     return Object.fromEntries(
-        PROVIDER_DEFINITIONS.map(({ id }) => {
-            if (!configured[id]) return [id, { configured: false, state: 'disabled', message: 'API key missing', updatedAt: null }];
+        PROVIDER_DEFINITIONS.map(({ id, statusKey = id }) => {
+            if (!configured[statusKey]) return [id, { configured: false, state: 'disabled', message: 'API key missing', updatedAt: null }];
             return [id, { configured: true, ...(providerHealth.get(id) || { state: 'enabled', message: 'Enabled', updatedAt: null }) }];
         })
     );

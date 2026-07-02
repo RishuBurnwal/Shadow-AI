@@ -147,6 +147,10 @@ export class ShadowAIApp extends LitElement {
             cursor: pointer;
         }
 
+        .provider-model-select {
+            width: 190px;
+        }
+
         .provider-select option:disabled {
             color: #777777;
         }
@@ -708,6 +712,22 @@ export class ShadowAIApp extends LitElement {
         await this.loadProviderStatus();
     }
 
+    async handleProviderModelSelection(provider, model) {
+        const result = await shadowAI.setProviderModel(provider, model);
+        if (!result?.success) {
+            this.showProviderNotification({ type: 'warning', message: result?.error || 'Unable to select model.' });
+        } else {
+            this.showProviderNotification({ type: 'success', message: `Model selected: ${model}` });
+        }
+        await this.loadProviderStatus();
+    }
+
+    modelProvider() {
+        const selected = this._providerStatus.selected || 'default';
+        const effective = selected === 'default' ? this._providerStatus.effective : selected;
+        return effective && effective !== 'auto' ? effective : null;
+    }
+
     providerOptionLabel(provider) {
         const labels = { groq: 'Groq', openrouter: 'OpenRouter', openai: 'OpenAI', perplexity: 'Perplexity', nvidia: 'NVIDIA', gemma: 'Gemma' };
         const status = this._providerStatus.providers?.[provider];
@@ -1191,6 +1211,8 @@ export class ShadowAIApp extends LitElement {
         const selectedProviderStatus = this.selectedProviderStatus();
         const providerStatusClass =
             selectedProviderStatus.state === 'disabled' ? 'disabled' : ['enabled', 'active'].includes(selectedProviderStatus.state) ? 'ok' : 'error';
+        const modelProvider = this.modelProvider();
+        const modelStatus = modelProvider ? this._providerStatus.providers?.[modelProvider] : null;
 
         return html`
             <div class="app-shell">
@@ -1226,6 +1248,20 @@ export class ShadowAIApp extends LitElement {
                             })}
                         </select>
                     </label>
+                    <select
+                        class="provider-select provider-model-select"
+                        aria-label="AI model selection"
+                        title=${modelProvider ? `Model for ${modelProvider}` : 'Select an individual provider to choose a model'}
+                        ?disabled=${!modelProvider || !modelStatus?.configured}
+                        .value=${modelStatus?.selectedModel || ''}
+                        @change=${event => this.handleProviderModelSelection(modelProvider, event.target.value)}
+                    >
+                        ${
+                            modelProvider
+                                ? (modelStatus?.models || []).map(model => html`<option value=${model}>${model}</option>`)
+                                : html`<option value="">Model: automatic</option>`
+                        }
+                    </select>
                     <label
                         class="header-color-picker"
                         title="Choose the AI response text color"

@@ -26,6 +26,7 @@ const DEFAULT_PREFERENCES = {
     sessionNote: '',
     providerMode: 'byok',
     answerProvider: 'default',
+    providerModels: {},
     selectedProfile: 'interview',
     selectedLanguage: 'en-US',
     selectedScreenshotInterval: '5',

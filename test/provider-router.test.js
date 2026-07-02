@@ -127,6 +127,16 @@ test('provider health classifies runtime failures and disables missing keys', as
     });
 });
 
+test('Gemma uses the Gemini key status and providers expose selectable models', () => {
+    const { PROVIDER_DEFINITIONS, getProviderRuntimeStatus } = require('../src/utils/providerRouter');
+    const status = getProviderRuntimeStatus({ gemini: true });
+    const gemma = PROVIDER_DEFINITIONS.find(provider => provider.id === 'gemma');
+    assert.equal(status.gemma.configured, true);
+    assert.equal(status.gemma.state, 'enabled');
+    assert.ok(gemma.models.includes('gemma-3-27b-it'));
+    assert.ok(PROVIDER_DEFINITIONS.every(provider => provider.models.includes(provider.model)));
+});
+
 test('launcher and environment templates exist without committing .env', () => {
     assert.equal(fs.existsSync(path.join(root, 'main.py')), true);
     assert.equal(fs.existsSync(path.join(root, '.env.example')), true);

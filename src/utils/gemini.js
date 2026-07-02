@@ -364,7 +364,8 @@ async function sendToGemma(transcription, appendUser = true) {
         return;
     }
 
-    console.log('Sending to Gemma:', transcription.substring(0, 100) + '...');
+    const modelToUse = process.env.GEMMA_MODEL || 'gemma-3-27b-it';
+    console.log(`Sending to Gemma (${modelToUse}):`, transcription.substring(0, 100) + '...');
 
     if (appendUser) {
         groqConversationHistory.push({
@@ -391,7 +392,7 @@ async function sendToGemma(transcription, appendUser = true) {
         ];
 
         const response = await ai.models.generateContentStream({
-            model: 'gemma-3-27b-it',
+            model: modelToUse,
             contents: messagesWithSystem,
         });
 
@@ -412,7 +413,7 @@ async function sendToGemma(transcription, appendUser = true) {
         const inputChars = systemPromptChars + historyChars;
         const outputChars = fullText.length;
 
-        incrementCharUsage('gemini', 'gemma-3-27b-it', inputChars + outputChars);
+        incrementCharUsage('gemini', modelToUse, inputChars + outputChars);
 
         if (fullText.trim()) {
             groqConversationHistory.push({
@@ -430,7 +431,7 @@ async function sendToGemma(transcription, appendUser = true) {
         console.log('Gemma response completed');
         markProviderSuccess('gemma');
         sendToRenderer('update-status', 'Listening...');
-        return { provider: 'gemma', model: 'gemma-3-27b-it', text: fullText };
+        return { provider: 'gemma', model: modelToUse, text: fullText };
     } catch (error) {
         markProviderFailure('gemma', error, error.status || 0);
         console.error('Error calling Gemma API:', error);
@@ -454,7 +455,7 @@ async function sendToAnswerProvider(transcription) {
     };
     const providers = getConfiguredProviders(env);
     const genericProviders = providers.map(provider =>
-        provider.id === 'groq' ? { ...provider, model: getModelForToday() || provider.model } : provider
+        provider.id === 'groq' && !process.env.GROQ_MODEL ? { ...provider, model: getModelForToday() || provider.model } : provider
     );
 
     if (providers[0]?.id === 'gemma') {

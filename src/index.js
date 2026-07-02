@@ -13,6 +13,7 @@ const geminiSessionRef = { current: null };
 let mainWindow = null;
 const launchProvider = String(process.env.SHADOW_AI_PROVIDER || 'auto').toLowerCase();
 const providerIds = new Set(PROVIDER_DEFINITIONS.map(provider => provider.id));
+const providersById = new Map(PROVIDER_DEFINITIONS.map(provider => [provider.id, provider]));
 
 function applyProviderSelection(selection) {
     const normalized = String(selection || 'default').toLowerCase();
@@ -20,6 +21,13 @@ function applyProviderSelection(selection) {
     else if (normalized === 'auto' || providerIds.has(normalized)) process.env.SHADOW_AI_PROVIDER = normalized;
     else throw new Error('Unsupported provider selection');
     return normalized;
+}
+
+function applyProviderModels(models = {}) {
+    for (const definition of PROVIDER_DEFINITIONS) {
+        const selected = models[definition.id];
+        if (selected && definition.models.includes(selected)) process.env[definition.modelEnv] = selected;
+    }
 }
 
 function createMainWindow() {
@@ -273,6 +281,7 @@ function setupStorageIpcHandlers() {
 function setupGeneralIpcHandlers() {
     const preferences = storage.getPreferences();
     const initialSelection = applyProviderSelection(preferences.answerProvider || 'default');
+    applyProviderModels(preferences.providerModels || {});
 
     ipcMain.handle('get-provider-status', async () => {
         const configured = providerEnv.getProviderStatus();
@@ -280,7 +289,19 @@ function setupGeneralIpcHandlers() {
             ...configured,
             selected: storage.getPreferences().answerProvider || initialSelection,
             effective: process.env.SHADOW_AI_PROVIDER || 'auto',
-            providers: getProviderRuntimeStatus(configured),
+            providers: Object.fromEntries(
+                Object.entries(getProviderRuntimeStatus(configured)).map(([provider, status]) => {
+                    const definition = providersById.get(provider);
+                    return [
+                        provider,
+                        {
+                            ...status,
+                            models: definition.models,
+                            selectedModel: process.env[definition.modelEnv] || definition.model,
+                        },
+                    ];
+                })
+            ),
         };
     });
 
@@ -291,6 +312,20 @@ function setupGeneralIpcHandlers() {
             if (providerIds.has(normalized) && !configured[normalized]) return { success: false, error: 'API key is not configured.' };
             applyProviderSelection(normalized);
             storage.updatePreference('answerProvider', normalized);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('set-provider-model', async (event, provider, model) => {
+        try {
+            const definition = providersById.get(String(provider || '').toLowerCase());
+            if (!definition || !definition.models.includes(model)) return { success: false, error: 'Unsupported model selection.' };
+            const preferences = storage.getPreferences();
+            const providerModels = { ...(preferences.providerModels || {}), [definition.id]: model };
+            storage.updatePreference('providerModels', providerModels);
+            process.env[definition.modelEnv] = model;
             return { success: true };
         } catch (error) {
             return { success: false, error: error.message };
