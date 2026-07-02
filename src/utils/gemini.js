@@ -15,7 +15,7 @@ const {
     normalizeLanguageCode,
 } = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
-const { getConfiguredProviders, streamWithFallback } = require('./providerRouter');
+const { getConfiguredProviders, streamWithFallback, markProviderSuccess, markProviderFailure } = require('./providerRouter');
 const { syncProviderEnvironment } = require('./providerEnv');
 
 // Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
@@ -428,9 +428,11 @@ async function sendToGemma(transcription, appendUser = true) {
         }
 
         console.log('Gemma response completed');
+        markProviderSuccess('gemma');
         sendToRenderer('update-status', 'Listening...');
         return { provider: 'gemma', model: 'gemma-3-27b-it', text: fullText };
     } catch (error) {
+        markProviderFailure('gemma', error, error.status || 0);
         console.error('Error calling Gemma API:', error);
         sendToRenderer('update-status', 'Gemma error: ' + error.message);
         throw error;

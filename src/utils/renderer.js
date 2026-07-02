@@ -1078,6 +1078,7 @@ const shadowAI = {
     // App version
     getVersion: async () => ipcRenderer.invoke('get-app-version'),
     getProviderStatus: async () => ipcRenderer.invoke('get-provider-status'),
+    setProviderSelection: async provider => ipcRenderer.invoke('set-provider-selection', provider),
     setProviderApiKey: async (provider, apiKey) => ipcRenderer.invoke('set-provider-api-key', provider, apiKey),
 
     // Element access

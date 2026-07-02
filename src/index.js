@@ -7,9 +7,20 @@ const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const storage = require('./storage');
 const providerEnv = require('./utils/providerEnv');
+const { PROVIDER_DEFINITIONS, getProviderRuntimeStatus } = require('./utils/providerRouter');
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
+const launchProvider = String(process.env.SHADOW_AI_PROVIDER || 'auto').toLowerCase();
+const providerIds = new Set(PROVIDER_DEFINITIONS.map(provider => provider.id));
+
+function applyProviderSelection(selection) {
+    const normalized = String(selection || 'default').toLowerCase();
+    if (normalized === 'default') process.env.SHADOW_AI_PROVIDER = providerIds.has(launchProvider) ? launchProvider : 'auto';
+    else if (normalized === 'auto' || providerIds.has(normalized)) process.env.SHADOW_AI_PROVIDER = normalized;
+    else throw new Error('Unsupported provider selection');
+    return normalized;
+}
 
 function createMainWindow() {
     mainWindow = createWindow(sendToRenderer, geminiSessionRef);
@@ -260,10 +271,31 @@ function setupStorageIpcHandlers() {
 }
 
 function setupGeneralIpcHandlers() {
-    ipcMain.handle('get-provider-status', async () => ({
-        ...providerEnv.getProviderStatus(),
-        selected: process.env.SHADOW_AI_PROVIDER || 'auto',
-    }));
+    const preferences = storage.getPreferences();
+    const initialSelection = applyProviderSelection(preferences.answerProvider || 'default');
+
+    ipcMain.handle('get-provider-status', async () => {
+        const configured = providerEnv.getProviderStatus();
+        return {
+            ...configured,
+            selected: storage.getPreferences().answerProvider || initialSelection,
+            effective: process.env.SHADOW_AI_PROVIDER || 'auto',
+            providers: getProviderRuntimeStatus(configured),
+        };
+    });
+
+    ipcMain.handle('set-provider-selection', async (event, selection) => {
+        try {
+            const normalized = String(selection || '').toLowerCase();
+            const configured = providerEnv.getProviderStatus();
+            if (providerIds.has(normalized) && !configured[normalized]) return { success: false, error: 'API key is not configured.' };
+            applyProviderSelection(normalized);
+            storage.updatePreference('answerProvider', normalized);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
 
     ipcMain.handle('set-provider-api-key', async (event, provider, apiKey) => {
         try {

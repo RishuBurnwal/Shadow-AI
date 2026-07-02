@@ -108,6 +108,25 @@ test('fallback emits provider-safe failure and selection notifications', async (
     assert.equal(JSON.stringify(notifications).includes('secret'), false);
 });
 
+test('provider health classifies runtime failures and disables missing keys', async () => {
+    const { streamWithFallback, getProviderRuntimeStatus, classifyProviderFailure } = require('../src/utils/providerRouter');
+    await assert.rejects(
+        streamWithFallback({
+            providers: [{ id: 'groq', apiKey: 'secret', baseUrl: 'https://groq.test', model: 'test' }],
+            messages: [{ role: 'user', content: 'hello' }],
+            fetchImpl: async () => new Response('rate limit exceeded', { status: 429 }),
+        })
+    );
+    const status = getProviderRuntimeStatus({ groq: true, openai: false });
+    assert.equal(status.groq.state, 'rate_limited');
+    assert.equal(status.groq.message, 'Rate limit hit');
+    assert.deepEqual(status.openai, { configured: false, state: 'disabled', message: 'API key missing', updatedAt: null });
+    assert.deepEqual(classifyProviderFailure({ message: 'HTTP 429', providerDetail: 'insufficient quota; update billing' }, 429), {
+        state: 'credits_exhausted',
+        message: 'Credits exhausted',
+    });
+});
+
 test('launcher and environment templates exist without committing .env', () => {
     assert.equal(fs.existsSync(path.join(root, 'main.py')), true);
     assert.equal(fs.existsSync(path.join(root, '.env.example')), true);

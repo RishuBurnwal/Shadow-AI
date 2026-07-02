@@ -25,6 +25,41 @@ const PROVIDER_DEFINITIONS = [
     { id: 'gemma', envKey: 'GEMINI_API_KEY', modelEnv: 'GEMMA_MODEL', model: 'gemma-3-27b-it', transport: 'google' },
 ];
 
+const providerHealth = new Map();
+
+function classifyProviderFailure(error, status = 0) {
+    const detail = `${String(error?.message || error || '')} ${String(error?.providerDetail || '')}`.toLowerCase();
+    if (detail.includes('credit') || detail.includes('quota') || detail.includes('billing'))
+        return { state: 'credits_exhausted', message: 'Credits exhausted' };
+    if (status === 429 || detail.includes('429') || detail.includes('rate limit')) return { state: 'rate_limited', message: 'Rate limit hit' };
+    if (status === 401 || status === 403 || detail.includes('401') || detail.includes('403') || detail.includes('api key')) {
+        return { state: 'auth_error', message: 'Authentication failed' };
+    }
+    if (status >= 500 || /http 5\d\d/.test(detail)) return { state: 'server_error', message: 'Provider server error' };
+    if (detail.includes('fetch') || detail.includes('network') || detail.includes('timeout') || detail.includes('econn')) {
+        return { state: 'network_error', message: 'Network error' };
+    }
+    if (detail.includes('empty response')) return { state: 'empty_response', message: 'Empty response' };
+    return { state: 'error', message: 'Unavailable' };
+}
+
+function markProviderSuccess(provider) {
+    providerHealth.set(provider, { state: 'active', message: 'Active', updatedAt: Date.now() });
+}
+
+function markProviderFailure(provider, error, status = 0) {
+    providerHealth.set(provider, { ...classifyProviderFailure(error, status), updatedAt: Date.now() });
+}
+
+function getProviderRuntimeStatus(configured = {}) {
+    return Object.fromEntries(
+        PROVIDER_DEFINITIONS.map(({ id }) => {
+            if (!configured[id]) return [id, { configured: false, state: 'disabled', message: 'API key missing', updatedAt: null }];
+            return [id, { configured: true, ...(providerHealth.get(id) || { state: 'enabled', message: 'Enabled', updatedAt: null }) }];
+        })
+    );
+}
+
 function getConfiguredProviders(env = process.env) {
     const configured = PROVIDER_DEFINITIONS.filter(definition => String(env[definition.envKey] || '').trim()).map(definition => ({
         ...definition,
@@ -95,12 +130,20 @@ async function streamWithFallback({
                 },
                 body: JSON.stringify({ model: provider.model, messages, stream: true, temperature: 0.7, max_tokens: 1024 }),
             });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                const detail = (await response.text().catch(() => '')).slice(0, 500);
+                const providerError = new Error(`HTTP ${response.status}`);
+                providerError.status = response.status;
+                providerError.providerDetail = detail;
+                throw providerError;
+            }
             const text = await readSseText(response, onToken);
             if (!text.trim()) throw new Error('Empty response');
+            markProviderSuccess(provider.id);
             onProviderSelected({ provider: provider.id, model: provider.model });
             return { provider: provider.id, model: provider.model, text };
         } catch (error) {
+            markProviderFailure(provider.id, error, error.status || 0);
             const failure = { provider: provider.id, error: error.message };
             failures.push(failure);
             onProviderFailure({
@@ -115,4 +158,12 @@ async function streamWithFallback({
     throw error;
 }
 
-module.exports = { PROVIDER_DEFINITIONS, getConfiguredProviders, streamWithFallback };
+module.exports = {
+    PROVIDER_DEFINITIONS,
+    getConfiguredProviders,
+    streamWithFallback,
+    classifyProviderFailure,
+    markProviderSuccess,
+    markProviderFailure,
+    getProviderRuntimeStatus,
+};

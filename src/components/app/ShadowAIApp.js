@@ -127,6 +127,50 @@ export class ShadowAIApp extends LitElement {
             color: var(--btn-primary-text);
         }
 
+        .provider-select-wrap {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-shrink: 0;
+            -webkit-app-region: no-drag;
+        }
+
+        .provider-select {
+            width: 164px;
+            height: 28px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            padding: 0 6px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .provider-select option:disabled {
+            color: #777777;
+        }
+
+        .provider-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--warning);
+            flex-shrink: 0;
+        }
+
+        .provider-status-dot.ok {
+            background: var(--success);
+        }
+
+        .provider-status-dot.disabled {
+            background: #666666;
+        }
+
+        .provider-status-dot.error {
+            background: var(--danger, #ef4444);
+        }
+
         .provider-notification {
             position: fixed;
             top: 58px;
@@ -481,6 +525,7 @@ export class ShadowAIApp extends LitElement {
         responseTextOpacity: { type: Number },
         responseTextColor: { type: String },
         _providerNotification: { state: true },
+        _providerStatus: { state: true },
     };
 
     constructor() {
@@ -512,6 +557,8 @@ export class ShadowAIApp extends LitElement {
         this.responseTextColor = '#f5f5f5';
         this._providerNotification = null;
         this._providerNotificationTimer = null;
+        this._providerStatus = { selected: 'default', effective: 'auto', providers: {} };
+        this._providerStatusTimer = null;
 
         this._loadFromStorage();
         this._checkForUpdates();
@@ -580,9 +627,14 @@ export class ShadowAIApp extends LitElement {
             ipcRenderer.on('whisper-downloading', (_, downloading) => {
                 this._whisperDownloading = downloading;
             });
-            this._providerNotificationHandler = (_, notification) => this.showProviderNotification(notification);
+            this._providerNotificationHandler = (_, notification) => {
+                this.showProviderNotification(notification);
+                this.loadProviderStatus();
+            };
             ipcRenderer.on('provider-notification', this._providerNotificationHandler);
         }
+        this.loadProviderStatus();
+        this._providerStatusTimer = setInterval(() => this.loadProviderStatus(), 5000);
     }
 
     disconnectedCallback() {
@@ -601,6 +653,7 @@ export class ShadowAIApp extends LitElement {
             }
         }
         clearTimeout(this._providerNotificationTimer);
+        clearInterval(this._providerStatusTimer);
     }
 
     // ── Timer ──
@@ -637,6 +690,35 @@ export class ShadowAIApp extends LitElement {
         if (text.includes('Ready') || text.includes('Listening') || text.includes('Error')) {
             this._currentResponseIsComplete = true;
         }
+    }
+
+    async loadProviderStatus() {
+        try {
+            this._providerStatus = await shadowAI.getProviderStatus();
+        } catch {
+            // Keep the last known safe snapshot while IPC is unavailable.
+        }
+    }
+
+    async handleProviderSelection(selection) {
+        const result = await shadowAI.setProviderSelection(selection);
+        if (!result?.success) {
+            this.showProviderNotification({ type: 'warning', message: result?.error || 'Unable to select provider.' });
+        }
+        await this.loadProviderStatus();
+    }
+
+    providerOptionLabel(provider) {
+        const labels = { groq: 'Groq', openrouter: 'OpenRouter', openai: 'OpenAI', perplexity: 'Perplexity', nvidia: 'NVIDIA', gemma: 'Gemma' };
+        const status = this._providerStatus.providers?.[provider];
+        return `${labels[provider]} — ${status?.message || 'Checking'}`;
+    }
+
+    selectedProviderStatus() {
+        const selected = this._providerStatus.selected || 'default';
+        const effective = selected === 'default' ? this._providerStatus.effective : selected;
+        if (selected === 'auto' || effective === 'auto') return { state: 'enabled', message: 'Automatic fallback enabled' };
+        return this._providerStatus.providers?.[effective] || { state: 'disabled', message: 'Checking provider status' };
     }
 
     addNewResponse(response) {
@@ -1105,6 +1187,10 @@ export class ShadowAIApp extends LitElement {
         }
 
         const isLive = this._isLiveMode();
+        const providerIds = ['groq', 'openrouter', 'openai', 'perplexity', 'nvidia', 'gemma'];
+        const selectedProviderStatus = this.selectedProviderStatus();
+        const providerStatusClass =
+            selectedProviderStatus.state === 'disabled' ? 'disabled' : ['enabled', 'active'].includes(selectedProviderStatus.state) ? 'ok' : 'error';
 
         return html`
             <div class="app-shell">
@@ -1122,6 +1208,24 @@ export class ShadowAIApp extends LitElement {
                         <button class="traffic-light maximize" title="Maximize"></button>
                     </div>
                     <div class="drag-region"></div>
+                    <label class="provider-select-wrap" title=${selectedProviderStatus.message}>
+                        <span class="provider-status-dot ${providerStatusClass}"></span>
+                        <select
+                            class="provider-select"
+                            aria-label="AI provider selection"
+                            .value=${this._providerStatus.selected || 'default'}
+                            @change=${event => this.handleProviderSelection(event.target.value)}
+                        >
+                            <option value="default">Default (${this._providerStatus.effective || 'auto'})</option>
+                            <option value="auto">Auto — fallback enabled</option>
+                            ${providerIds.map(provider => {
+                                const status = this._providerStatus.providers?.[provider];
+                                return html`<option value=${provider} ?disabled=${!status?.configured}>
+                                    ${this.providerOptionLabel(provider)}
+                                </option>`;
+                            })}
+                        </select>
+                    </label>
                     <label
                         class="header-color-picker"
                         title="Choose the AI response text color"

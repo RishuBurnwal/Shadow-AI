@@ -25,12 +25,22 @@ test('passthrough remains enabled while temporarily restoring header interaction
 
 test('persistent header owns the shared background transparency and passthrough controls', () => {
     const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+    const indexSource = fs.readFileSync(path.join(root, 'src/index.js'), 'utf8');
+    const rendererSource = fs.readFileSync(path.join(root, 'src/utils/renderer.js'), 'utf8');
+    const storageSource = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
 
     assert.match(appSource, /class="top-drag-bar"/);
     assert.match(appSource, /--header-solid-background/);
     assert.match(appSource, /backgroundTransparency/);
     assert.match(appSource, />\s*Passthrough\s*</);
     assert.doesNotMatch(appSource, /top-drag-bar[^\n]*hidden/);
+    assert.match(appSource, /aria-label="AI provider selection"/);
+    assert.match(appSource, /Auto — fallback enabled/);
+    assert.match(appSource, /Default \(\$\{this\._providerStatus\.effective/);
+    assert.match(appSource, /\?disabled=\$\{!status\?\.configured\}/);
+    assert.match(indexSource, /set-provider-selection/);
+    assert.match(rendererSource, /setProviderSelection/);
+    assert.match(storageSource, /answerProvider: 'default'/);
 });
 
 test('header AI text opacity controls only the rendered response content', () => {
