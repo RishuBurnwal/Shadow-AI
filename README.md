@@ -2,6 +2,8 @@
 
 Shadow AI is an Electron desktop assistant with live screen and audio context, a transparent always-on-top overlay, session history, and automatic multi-provider AI fallback. A numbered Python launcher handles setup, running, packaging, provider selection, diagnostics, and safe GitHub updates.
 
+Use a single `Shadow-AI` checkout as the canonical workspace. The launcher, updater, tests, and documentation are maintained together in this repository; legacy duplicate checkouts are not required.
+
 > Use screen/audio capture and AI assistance only where permitted, and obtain consent before processing other people's audio or content.
 
 ## Features
