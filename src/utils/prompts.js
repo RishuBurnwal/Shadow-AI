@@ -1,3 +1,5 @@
+const { getProfile } = require('../soul');
+
 const profilePrompts = {
     interview: {
         intro: `You are an AI-powered interview assistant, designed to act as a discreet on-screen teleprompter. Your mission is to help the user excel in their job interview by providing concise, impactful, and ready-to-speak answers or key talking points. Analyze the ongoing interview dialogue and, crucially, the 'User-provided context' below.`,
@@ -201,12 +203,41 @@ Provide direct exam answers in **markdown format**. Include the question text, t
     },
 };
 
+function buildProfileSummary() {
+    try {
+        const p = getProfile();
+        if (!p || (!p.name && !p.targetRole && !p.experienceSummary && p.keySkills.length === 0 && p.pastProjects.length === 0)) {
+            return ''; // empty profile, skip
+        }
+        const parts = [];
+        if (p.name) parts.push(`Name: ${p.name}`);
+        if (p.targetRole) parts.push(`Target role: ${p.targetRole}`);
+        if (p.experienceSummary) parts.push(`Background: ${p.experienceSummary}`);
+        if (p.keySkills.length > 0) parts.push(`Key skills: ${p.keySkills.join(', ')}`);
+        if (p.pastProjects.length > 0) parts.push(`Past projects: ${p.pastProjects.join('; ')}`);
+        if (p.preferredTone) parts.push(`Preferred tone: ${p.preferredTone}`);
+        return `About the candidate
+-----
+${parts.join('\n')}
+-----
+\n`;
+    } catch {
+        return ''; // graceful fallback if soul module fails
+    }
+}
+
 function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true) {
     const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements];
 
     // Only add search usage section if Google Search is enabled
     if (googleSearchEnabled) {
         sections.push('\n\n', promptParts.searchUsage);
+    }
+
+    // Inject Soul profile summary before the main content
+    const profileSummary = buildProfileSummary();
+    if (profileSummary) {
+        sections.push('\n\n', profileSummary);
     }
 
     sections.push('\n\n', promptParts.content, '\n\nUser-provided context\n-----\n', customPrompt, '\n-----\n\n', promptParts.outputInstructions);
