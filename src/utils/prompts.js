@@ -1,5 +1,6 @@
 const { getProfile } = require('../soul');
 const { getSkillPromptFragments } = require('../skills/skillRegistry');
+const { getRelevantFacts } = require('../memory');
 
 const profilePrompts = {
     interview: {
@@ -204,6 +205,21 @@ Provide direct exam answers in **markdown format**. Include the question text, t
     },
 };
 
+function buildMemorySummary(context = '') {
+    try {
+        const facts = getRelevantFacts(context, 5);
+        if (facts.length === 0) return '';
+        const lines = facts.map(f => `- ${f.fact}`);
+        return `Learned facts about the user
+-----
+${lines.join('\n')}
+-----
+\n`;
+    } catch {
+        return '';
+    }
+}
+
 function buildProfileSummary() {
     try {
         const p = getProfile();
@@ -239,6 +255,12 @@ function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled =
     const profileSummary = buildProfileSummary();
     if (profileSummary) {
         sections.push('\n\n', profileSummary);
+    }
+
+    // Inject relevant memory facts (keyword-ranked + recency-scored)
+    const memorySummary = buildMemorySummary(customPrompt);
+    if (memorySummary) {
+        sections.push('\n\n', memorySummary);
     }
 
     // Inject skill prompt fragments (respecting enabled/disabled toggles)

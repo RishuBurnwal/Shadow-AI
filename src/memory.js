@@ -264,6 +264,71 @@ function deleteMemoryEntry(id) {
     return saveMemory(facts);
 }
 
+// Extract meaningful keywords from a text string (skip very common English words)
+const STOP_WORDS = new Set([
+    'the','a','an','and','or','but','in','on','at','to','for','of','with','by','from',
+    'is','are','was','were','be','been','being','have','has','had','do','does','did',
+    'will','would','could','should','may','might','shall','can','need','dare','ought',
+    'i','you','he','she','it','we','they','my','your','his','her','its','our','their',
+    'this','that','these','those','am','not','no','nor','if','as','so','about','into',
+    'than','then','just','also','very','too','all','any','each','every','both','some',
+    'more','most','other','such','only','own','same','here','there','when','where',
+    'what','which','who','whom','why','how','up','out','off','over','after','before',
+    'between','through','during','above','below','get','got','set','put','make','made',
+    'take','took','give','given','find','found','know','known','see','saw','think','thought',
+    'like','use','used','work','worked','want','need','let','tell','ask','said','say',
+]);
+
+function extractKeywords(text) {
+    if (!text || !text.trim()) return [];
+    const words = text.toLowerCase().split(/[^a-z0-9+#.]+/);
+    const unique = new Set();
+    for (const w of words) {
+        if (w.length >= 3 && !STOP_WORDS.has(w) && !/^\d+$/.test(w)) {
+            unique.add(w);
+        }
+    }
+    return [...unique];
+}
+
+// Get the top N most relevant facts for a given context string.
+// Scoring = keyword overlap (2x) + recency bonus.
+function getRelevantFacts(context = '', maxFacts = 5) {
+    const facts = getMemory();
+    if (facts.length === 0) return [];
+
+    const keywords = extractKeywords(context);
+    const now = Date.now();
+    const DAY = 86400000;
+
+    const scored = facts.map(f => {
+        let score = 0;
+        const factText = ((f.fact || '') + ' ' + (f.category || '')).toLowerCase();
+
+        // Keyword overlap
+        if (keywords.length > 0) {
+            for (const kw of keywords) {
+                if (factText.includes(kw)) score += 2;
+            }
+        }
+
+        // Recency bonus
+        const age = now - (f.updatedAt || f.createdAt || 0);
+        if (age < 7 * DAY) score += 5;
+        else if (age < 30 * DAY) score += 2;
+
+        return { fact: f, score };
+    });
+
+    // Sort by score descending, then by recency descending as tiebreaker
+    scored.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return (b.fact.updatedAt || 0) - (a.fact.updatedAt || 0);
+    });
+
+    return scored.slice(0, maxFacts).map(s => s.fact);
+}
+
 function getProfileForDisplay() {
     try {
         const { getProfile } = require('./soul');
