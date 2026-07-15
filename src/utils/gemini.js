@@ -281,6 +281,8 @@ function stripThinkingTags(text) {
     return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
 
+const { extractFactsFromSession, getMemory, mergeFacts, saveMemory } = require('../memory');
+
 async function generateSessionSummary(history) {
     if (!history || history.length < 2) return '';
 
@@ -1309,12 +1311,24 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('close-session', async event => {
         try {
-            // Generate session summary before closing (non-blocking, fire-and-forget)
+            // Generate session summary + extract memory facts (non-blocking, fire-and-forget)
             if (conversationHistory.length >= 2) {
-                generateSessionSummary(conversationHistory).then(summary => {
-                    if (summary && currentSessionId) {
+                const history = conversationHistory;
+                const sid = currentSessionId;
+                // Summary
+                generateSessionSummary(history).then(summary => {
+                    if (summary && sid) {
                         console.log('Session summary:', summary);
-                        sendToRenderer('save-session-summary', { sessionId: currentSessionId, summary });
+                        sendToRenderer('save-session-summary', { sessionId: sid, summary });
+                    }
+                }).catch(() => {});
+                // Memory extraction
+                extractFactsFromSession(history).then(newFacts => {
+                    if (newFacts.length > 0) {
+                        const existing = getMemory();
+                        const merged = mergeFacts(newFacts, existing);
+                        saveMemory(merged);
+                        console.log(`Memory: extracted ${newFacts.length} new facts (total: ${merged.length})`);
                     }
                 }).catch(() => {});
             }
