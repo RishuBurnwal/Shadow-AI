@@ -6,6 +6,7 @@ const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const storage = require('./storage');
+const soul = require('./soul');
 const providerEnv = require('./utils/providerEnv');
 const { PROVIDER_DEFINITIONS, getProviderRuntimeStatus, getConfiguredProviders, discoverProviderModels } = require('./utils/providerRouter');
 const { providerLabelMap } = require('./utils/providers.config');
@@ -264,6 +265,33 @@ function setupStorageIpcHandlers() {
             return { success: true, data: storage.getTodayLimits() };
         } catch (error) {
             console.error('Error getting today limits:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // ============ PROFILE (Soul) ============
+    ipcMain.handle('storage:get-profile', async () => {
+        try {
+            return { success: true, data: soul.getProfile() };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:set-profile', async (event, profile) => {
+        try {
+            soul.setProfile(profile);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:delete-profile', async () => {
+        try {
+            soul.deleteProfile();
+            return { success: true };
+        } catch (error) {
             return { success: false, error: error.message };
         }
     });

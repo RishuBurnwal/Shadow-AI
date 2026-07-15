@@ -121,6 +121,18 @@ const storage = {
         return ipcRenderer.invoke('storage:delete-all-sessions');
     },
 
+    // Profile (Soul)
+    async getProfile() {
+        const result = await ipcRenderer.invoke('storage:get-profile');
+        return result.success ? result.data : {};
+    },
+    async setProfile(profile) {
+        return ipcRenderer.invoke('storage:set-profile', profile);
+    },
+    async deleteProfile() {
+        return ipcRenderer.invoke('storage:delete-profile');
+    },
+
     // Clear all
     async clearAll() {
         return ipcRenderer.invoke('storage:clear-all');
