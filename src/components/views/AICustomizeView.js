@@ -168,6 +168,9 @@ export class AICustomizeView extends LitElement {
         _newSkill: { state: true },
         _newProject: { state: true },
         _profileLoaded: { state: true },
+        _skills: { state: true },
+        _syncing: { state: true },
+        _syncResult: { state: true },
     };
 
     constructor() {
@@ -176,6 +179,9 @@ export class AICustomizeView extends LitElement {
         this.onProfileChange = () => {};
         this._context = '';
         this._activeTab = 'context';
+        this._skills = [];
+        this._syncing = false;
+        this._syncResult = null;
         this._profileLoaded = false;
         this._saveTimer = null;
         this._loadFromStorage();
@@ -191,8 +197,13 @@ export class AICustomizeView extends LitElement {
             const prefs = await shadowAI.storage.getPreferences();
             this._context = prefs.customPrompt || '';
 
+            // Load skills
+            if (shadowAI.storage.getPreferences) {
+                const prefs2 = await shadowAI.storage.getPreferences();
+                this._skills = Array.isArray(prefs2.enabledSkills) ? prefs2.enabledSkills : [];
+            }
+
             // Load profile
-            if (shadowAI.storage.getProfile) {
                 const profile = await shadowAI.storage.getProfile();
                 if (profile && typeof profile === 'object') {
                     this._profileName = profile.name || '';
@@ -273,6 +284,77 @@ export class AICustomizeView extends LitElement {
     _removeProject(idx) {
         this._pastProjects = this._pastProjects.filter((_, i) => i !== idx);
         this._saveProfile();
+    }
+
+    async _toggleSkill(skillId, enabled) {
+        if (enabled) {
+            if (!this._skills.includes(skillId)) this._skills = [...this._skills, skillId];
+        } else {
+            this._skills = this._skills.filter(id => id !== skillId);
+        }
+        await shadowAI.storage.updatePreference('enabledSkills', this._skills);
+    }
+
+    _isSkillEnabled(skillId) {
+        return this._skills.includes(skillId);
+    }
+
+    async _handleResumeSync() {
+        if (this._syncing || !this._resumeText?.trim()) return;
+        this._syncing = true;
+        this._syncResult = null;
+        this.requestUpdate();
+        try {
+            const result = await shadowAI.storage.resumeSync(this._resumeText);
+            if (result.success && result.profile) {
+                this._syncResult = { type: 'success', profile: result.profile };
+                this._profileName = result.profile.name || this._profileName;
+                this._targetRole = result.profile.targetRole || this._targetRole;
+                this._experienceSummary = result.profile.experienceSummary || this._experienceSummary;
+                if (result.profile.keySkills?.length > 0) this._keySkills = result.profile.keySkills;
+                this._saveProfile();
+            } else {
+                this._syncResult = { type: 'error', message: result.error || 'Extraction failed.' };
+            }
+        } catch (error) {
+            this._syncResult = { type: 'error', message: error.message || 'Extraction failed.' };
+        }
+        this._syncing = false;
+        this.requestUpdate();
+    }
+
+    renderSkillsTab() {
+        // Get all available skills
+        const allSkills = [
+            { id: 'star-answer', label: 'STAR Method Answers', desc: 'Formats behavioral interview answers using Situation, Task, Action, Result. Uses your stored projects as concrete examples.' },
+            { id: 'resume-sync', label: 'Resume Sync', desc: 'Lets you paste a resume and auto-fill your profile fields via AI extraction.' },
+        ];
+
+        return html`
+            <div class="form-grid">
+                <div class="form-help" style="margin-bottom:var(--space-sm);">
+                    Skills add capabilities and instructions tailored to your current profile.
+                    Skills are auto-enabled based on your selected profile and can be toggled individually.
+                </div>
+                ${allSkills.map(s => {
+                    const autoEnabled = s.id === 'star-answer' ? this.selectedProfile === 'interview' : true;
+                    const enabled = this._isSkillEnabled(s.id);
+                    return html`
+                        <div class="skill-row" style="display:flex;align-items:center;gap:var(--space-md);padding:var(--space-sm) 0;border-bottom:1px solid var(--border);">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;">
+                                <input type="checkbox" ?checked=${enabled} @change=${e => this._toggleSkill(s.id, e.target.checked)} style="cursor:pointer;" />
+                                <span style="font-size:var(--font-size-sm);color:var(--text-primary);font-weight:500;">${s.label}</span>
+                            </label>
+                            <span style="font-size:var(--font-size-xs);color:var(--text-muted);flex:1;">${s.desc}</span>
+                            ${autoEnabled ? html`<span class="chip">auto</span>` : ''}
+                        </div>
+                    `;
+                })}
+                <div class="form-help" style="margin-top:var(--space-sm);">
+                    Skills marked "auto" activate automatically for your current profile. Uncheck to disable.
+                </div>
+            </div>
+        `;
     }
 
     _switchTab(tab) {
@@ -459,6 +541,21 @@ export class AICustomizeView extends LitElement {
                                     this._debounceSave();
                                 }}
                     ></textarea>
+                    ${this._isSkillEnabled('resume-sync')
+                        ? html`
+                              <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                                  <button class="tag-add-btn" ?disabled=${this._syncing || !this._resumeText?.trim()} @click=${this._handleResumeSync}>
+                                      ${this._syncing ? 'Extracting...' : 'Sync from Resume'}
+                                  </button>
+                                  ${this._syncResult?.type === 'success'
+                                      ? html`<span style="font-size:var(--font-size-xs);color:var(--success, #4caf50);">Profile fields updated. Review above.</span>`
+                                      : ''}
+                                  ${this._syncResult?.type === 'error'
+                                      ? html`<span style="font-size:var(--font-size-xs);color:var(--danger, #ef4444);">${this._syncResult.message}</span>`
+                                      : ''}
+                              </div>
+                          `
+                        : ''}
                 </div>
 
                 <div class="profile-actions">
@@ -484,10 +581,13 @@ export class AICustomizeView extends LitElement {
                         <button class="tab ${this._activeTab === 'profile' ? 'active' : ''}" @click=${() => this._switchTab('profile')}>
                             About Me
                         </button>
+                        <button class="tab ${this._activeTab === 'skills' ? 'active' : ''}" @click=${() => this._switchTab('skills')}>
+                            Skills
+                        </button>
                     </div>
 
                     <section class="surface">
-                        ${this._activeTab === 'context' ? this.renderContextTab() : this.renderProfileTab()}
+                        ${this._activeTab === 'context' ? this.renderContextTab() : this._activeTab === 'profile' ? this.renderProfileTab() : this.renderSkillsTab()}
                     </section>
                 </div>
             </div>

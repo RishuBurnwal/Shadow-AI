@@ -335,6 +335,17 @@ function setupStorageIpcHandlers() {
         }
     });
 
+    // ============ SKILLS ============
+    ipcMain.handle('skills:resume-sync', async (event, resumeText) => {
+        try {
+            const resumeSync = require('./skills/resumeSync');
+            const result = await resumeSync.action({ resumeText });
+            return result;
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
     // ============ CLEAR ALL ============
     ipcMain.handle('storage:clear-all', async () => {
         try {

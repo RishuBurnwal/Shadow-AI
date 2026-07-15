@@ -121,6 +121,11 @@ const storage = {
         return ipcRenderer.invoke('storage:delete-all-sessions');
     },
 
+    // Skills
+    async resumeSync(resumeText) {
+        return ipcRenderer.invoke('skills:resume-sync', resumeText);
+    },
+
     // Profile (Soul)
     async getProfile() {
         const result = await ipcRenderer.invoke('storage:get-profile');

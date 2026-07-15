@@ -660,7 +660,10 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     const enabledTools = await getEnabledTools();
     const googleSearchEnabled = enabledTools.some(tool => tool.googleSearch);
 
-    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled);
+    // Load enabled skills from preferences for skill prompt fragments
+    const prefs = getPreferences();
+    const enabledSkills = Array.isArray(prefs.enabledSkills) ? prefs.enabledSkills : null;
+    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled, enabledSkills);
     currentSystemPrompt = systemPrompt; // Store for Groq
 
     // Initialize new conversation session only on first connect

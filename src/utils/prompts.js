@@ -1,4 +1,5 @@
 const { getProfile } = require('../soul');
+const { getSkillPromptFragments } = require('../skills/skillRegistry');
 
 const profilePrompts = {
     interview: {
@@ -226,7 +227,7 @@ ${parts.join('\n')}
     }
 }
 
-function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true) {
+function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled = true, profile = 'interview', enabledSkills = null) {
     const sections = [promptParts.intro, '\n\n', promptParts.formatRequirements];
 
     // Only add search usage section if Google Search is enabled
@@ -240,17 +241,18 @@ function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled =
         sections.push('\n\n', profileSummary);
     }
 
+    // Inject skill prompt fragments (respecting enabled/disabled toggles)
+    const skillFragments = getSkillPromptFragments(profile, enabledSkills);
+    for (const fragment of skillFragments) {
+        sections.push('\n', fragment);
+    }
+
     sections.push('\n\n', promptParts.content, '\n\nUser-provided context\n-----\n', customPrompt, '\n-----\n\n', promptParts.outputInstructions);
 
     return sections.join('');
 }
 
-function getSystemPrompt(profile, customPrompt = '', googleSearchEnabled = true) {
+function getSystemPrompt(profile, customPrompt = '', googleSearchEnabled = true, enabledSkills = null) {
     const promptParts = profilePrompts[profile] || profilePrompts.interview;
-    return buildSystemPrompt(promptParts, customPrompt, googleSearchEnabled);
+    return buildSystemPrompt(promptParts, customPrompt, googleSearchEnabled, profile, enabledSkills);
 }
-
-module.exports = {
-    profilePrompts,
-    getSystemPrompt,
-};
