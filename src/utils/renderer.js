@@ -133,6 +133,21 @@ const storage = {
         return ipcRenderer.invoke('storage:delete-profile');
     },
 
+    // Memory
+    async getMemory() {
+        const result = await ipcRenderer.invoke('storage:get-memory');
+        return result.success ? result.data : { facts: [], profile: {} };
+    },
+    async updateMemoryEntry(id, updates) {
+        return ipcRenderer.invoke('storage:update-memory-entry', id, updates);
+    },
+    async deleteMemoryEntry(id) {
+        return ipcRenderer.invoke('storage:delete-memory-entry', id);
+    },
+    async clearMemory() {
+        return ipcRenderer.invoke('storage:clear-memory');
+    },
+
     // Clear all
     async clearAll() {
         return ipcRenderer.invoke('storage:clear-all');

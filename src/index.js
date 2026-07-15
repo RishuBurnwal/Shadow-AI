@@ -7,6 +7,7 @@ const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const storage = require('./storage');
 const soul = require('./soul');
+const memory = require('./memory');
 const providerEnv = require('./utils/providerEnv');
 const { PROVIDER_DEFINITIONS, getProviderRuntimeStatus, getConfiguredProviders, discoverProviderModels } = require('./utils/providerRouter');
 const { providerLabelMap } = require('./utils/providers.config');
@@ -290,6 +291,44 @@ function setupStorageIpcHandlers() {
     ipcMain.handle('storage:delete-profile', async () => {
         try {
             soul.deleteProfile();
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    // ============ MEMORY ============
+    ipcMain.handle('storage:get-memory', async () => {
+        try {
+            const facts = memory.getMemory();
+            const profile = memory.getProfileForDisplay();
+            return { success: true, data: { facts, profile } };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:update-memory-entry', async (event, id, updates) => {
+        try {
+            if (!memory.updateMemoryEntry(id, updates)) return { success: false, error: 'Memory entry not found.' };
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:delete-memory-entry', async (event, id) => {
+        try {
+            if (!memory.deleteMemoryEntry(id)) return { success: false, error: 'Memory entry not found.' };
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:clear-memory', async () => {
+        try {
+            memory.clearMemory();
             return { success: true };
         } catch (error) {
             return { success: false, error: error.message };

@@ -248,6 +248,31 @@ async function extractFactsFromSession(history) {
     }
 }
 
+function updateMemoryEntry(id, updates) {
+    const facts = getMemory();
+    const idx = facts.findIndex(f => f.id === id);
+    if (idx === -1) return false;
+    facts[idx] = { ...facts[idx], ...updates, updatedAt: Date.now() };
+    return saveMemory(facts);
+}
+
+function deleteMemoryEntry(id) {
+    const facts = getMemory();
+    const idx = facts.findIndex(f => f.id === id);
+    if (idx === -1) return false;
+    facts.splice(idx, 1);
+    return saveMemory(facts);
+}
+
+function getProfileForDisplay() {
+    try {
+        const { getProfile } = require('./soul');
+        return getProfile();
+    } catch {
+        return null;
+    }
+}
+
 module.exports = {
     getMemory,
     saveMemory,
@@ -255,4 +280,7 @@ module.exports = {
     clearMemory,
     mergeFacts,
     extractFactsFromSession,
+    updateMemoryEntry,
+    deleteMemoryEntry,
+    getProfileForDisplay,
 };
