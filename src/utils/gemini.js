@@ -674,11 +674,16 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         }
 
                         if (message.serverContent?.inputTranscription?.results) {
-                            s.transcription += formatSpeakerResults(message.serverContent.inputTranscription.results);
+                            const formatted = formatSpeakerResults(message.serverContent.inputTranscription.results);
+                            s.transcription += formatted;
+                            if (formatted.trim()) {
+                                sendToRenderer('interim-transcription', { text: s.transcription, isFinal: false });
+                            }
                         } else if (message.serverContent?.inputTranscription?.text) {
                             const text = message.serverContent.inputTranscription.text;
                             if (text.trim() !== '') {
                                 s.transcription += text;
+                                sendToRenderer('interim-transcription', { text: s.transcription, isFinal: false });
                             }
                         }
 
@@ -692,6 +697,10 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                         // Primary trigger: turnComplete fires when the user's turn is finished
                         if (message.serverContent?.turnComplete && !s.answerFired) {
+                            // Send final transcription to caption bar before clearing
+                            if (s.transcription.trim() !== '') {
+                                sendToRenderer('interim-transcription', { text: s.transcription, isFinal: true });
+                            }
                             s.answerFired = true;
                             if (s.transcription.trim() !== '') {
                                 if (isDebug) {
