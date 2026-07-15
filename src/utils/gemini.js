@@ -1325,15 +1325,20 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                         sendToRenderer('save-session-summary', { sessionId: sid, summary });
                     }
                 }).catch(() => {});
-                // Memory extraction
-                extractFactsFromSession(history).then(newFacts => {
-                    if (newFacts.length > 0) {
-                        const existing = getMemory();
-                        const merged = mergeFacts(newFacts, existing);
-                        saveMemory(merged);
-                        console.log(`Memory: extracted ${newFacts.length} new facts (total: ${merged.length})`);
-                    }
-                }).catch(() => {});
+                // Memory extraction (skipped when privacy mode is on)
+                const prefs = getPreferences();
+                if (!prefs.privacyMode) {
+                    extractFactsFromSession(history).then(newFacts => {
+                        if (newFacts.length > 0) {
+                            const existing = getMemory();
+                            const merged = mergeFacts(newFacts, existing);
+                            saveMemory(merged);
+                            console.log(`Memory: extracted ${newFacts.length} new facts (total: ${merged.length})`);
+                        }
+                    }).catch(() => {});
+                } else {
+                    console.log('Memory extraction skipped (privacy mode active)');
+                }
             }
 
             stopMacOSAudioCapture();

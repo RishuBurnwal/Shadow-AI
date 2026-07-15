@@ -224,6 +224,7 @@ export class MemoryView extends LitElement {
         editCategory: { type: String },
         errorMsg: { type: String },
         clearing: { type: Boolean },
+        privacyMode: { type: Boolean },
     };
 
     constructor() {
@@ -236,7 +237,18 @@ export class MemoryView extends LitElement {
         this.editCategory = '';
         this.errorMsg = '';
         this.clearing = false;
+        this.privacyMode = false;
+        this.loadPrivacyPref();
         this.loadMemory();
+    }
+
+    async loadPrivacyPref() {
+        try {
+            const prefs = await shadowAI.storage.getPreferences();
+            this.privacyMode = prefs.privacyMode ?? false;
+        } catch {
+            this.privacyMode = false;
+        }
     }
 
     async loadMemory() {
@@ -380,6 +392,13 @@ export class MemoryView extends LitElement {
             </div>
 
             ${this.errorMsg ? html`<div class="error-msg" role="alert">${this.errorMsg}</div>` : ''}
+
+            ${this.privacyMode ? html`
+                <div class="surface" style="grid-column:1/-1;border-color:var(--warning);border-style:dashed;">
+                    <div class="surface-title" style="color:var(--warning);">Privacy Mode Active</div>
+                    <div class="surface-subtitle">Memory learning is paused. No new facts will be remembered from your conversations until you turn off Privacy Mode in Settings.</div>
+                </div>
+            ` : ''}
 
             <div class="memory-layout">
                 <div class="surface" style="grid-column:1/-1;">

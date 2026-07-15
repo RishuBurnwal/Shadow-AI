@@ -49,6 +49,7 @@ const DEFAULT_PREFERENCES = {
     ollamaHost: 'http://127.0.0.1:11434',
     ollamaModel: 'llama3.1',
     whisperModel: 'Xenova/whisper-small',
+    privacyMode: false,
 };
 
 function normalizeLanguageCode(value) {

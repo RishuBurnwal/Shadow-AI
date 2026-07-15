@@ -182,6 +182,7 @@ export class CustomizeView extends LitElement {
         layoutMode: { type: String },
         keybinds: { type: Object },
         googleSearchEnabled: { type: Boolean },
+        privacyMode: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         theme: { type: String },
@@ -209,6 +210,7 @@ export class CustomizeView extends LitElement {
         this.onLayoutModeChange = () => {};
         this.onBackgroundTransparencyChange = () => {};
         this.googleSearchEnabled = true;
+        this.privacyMode = false;
         this.isClearing = false;
         this.isRestoring = false;
         this.clearStatusMessage = '';
@@ -229,6 +231,7 @@ export class CustomizeView extends LitElement {
         try {
             const [prefs, keybinds] = await Promise.all([shadowAI.storage.getPreferences(), shadowAI.storage.getKeybinds()]);
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
+            this.privacyMode = prefs.privacyMode ?? false;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
@@ -384,6 +387,13 @@ export class CustomizeView extends LitElement {
         this.requestUpdate();
     }
 
+    async handlePrivacyModeChange(e) {
+        this.privacyMode = e.target.checked;
+        await shadowAI.storage.updatePreference('privacyMode', this.privacyMode);
+        // If privacy is disabled mid-session, nothing changes — only affects future sessions
+        this.requestUpdate();
+    }
+
     async handleBackgroundTransparencyChange(e) {
         this.backgroundTransparency = parseFloat(e.target.value);
         await this.onBackgroundTransparencyChange(this.backgroundTransparency);
@@ -490,6 +500,7 @@ export class CustomizeView extends LitElement {
                 fontSize: 20,
                 backgroundTransparency: 0.8,
                 googleSearchEnabled: false,
+                privacyMode: false,
                 theme: 'dark',
             };
             for (const [key, value] of Object.entries(defaults)) {
@@ -694,6 +705,25 @@ export class CustomizeView extends LitElement {
         return html`
             <section class="surface danger-surface">
                 <div class="surface-title danger">Privacy and Data</div>
+
+                <div class="toggle-row" style="margin-bottom:var(--space-sm);">
+                    <input
+                        class="toggle-input"
+                        type="checkbox"
+                        id="privacy-toggle"
+                        .checked=${this.privacyMode}
+                        @change=${this.handlePrivacyModeChange}
+                    />
+                    <label class="toggle-label" for="privacy-toggle">
+                        <strong>Privacy Mode</strong>
+                        <span style="display:block;font-size:var(--font-size-xs);color:var(--text-muted);">
+                            ${this.privacyMode
+                                ? 'Memory learning is paused. No new facts will be remembered from sessions.'
+                                : 'When on, the assistant will not remember new facts from your conversations.'}
+                        </span>
+                    </label>
+                </div>
+
                 <div style="display:flex;gap:var(--space-sm);flex-wrap:wrap;">
                     <button class="danger-button" @click=${this.restoreAllSettings} ?disabled=${this.isRestoring}>
                         ${this.isRestoring ? 'Restoring...' : 'Restore all settings'}

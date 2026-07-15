@@ -562,6 +562,7 @@ export class ShadowAIApp extends LitElement {
         this.responseTextOpacity = 1;
         this.responseTextColor = '#f5f5f5';
         this.interimTranscription = null;
+        this._privacyMode = false;
         this._providerNotification = null;
         this._providerNotificationTimer = null;
         this._providerStatus = { selected: 'default', effective: 'auto', providers: {} };
@@ -610,10 +611,14 @@ export class ShadowAIApp extends LitElement {
             this.responseTextOpacity = prefs.responseTextOpacity ?? 1;
             this.responseTextColor = /^#[0-9a-f]{6}$/i.test(prefs.responseTextColor) ? prefs.responseTextColor : '#f5f5f5';
 
+                const prefs2 = await shadowAI.storage.getPreferences();
+            this._privacyMode = prefs2.privacyMode ?? false;
+
             this._storageLoaded = true;
             this.requestUpdate();
         } catch (error) {
             console.error('Error loading from storage:', error);
+            this._privacyMode = false;
             this._storageLoaded = true;
             this.requestUpdate();
         }
@@ -1233,6 +1238,7 @@ export class ShadowAIApp extends LitElement {
                     ${this.statusText ? html`<span class="live-bar-text">${this.statusText}</span>` : ''}
                     <span class="live-bar-text">${this.getElapsedTime()}</span>
                     ${this._isClickThrough ? html`<span class="live-bar-text">[click through]</span>` : ''}
+                    ${this._storageLoaded && this._privacyMode ? html`<span class="live-bar-text" style="color:var(--warning);">[privacy]</span>` : ''}
                     <span class="live-bar-text clickable" @click=${() => this.handleHideToggle()}>[hide]</span>
                 </div>
             </div>
