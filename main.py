@@ -339,6 +339,8 @@ def launch(args: argparse.Namespace) -> int:
         print(f"provider: {args.provider}")
         print("configured: " + ", ".join(available))
         print(f"project: {ROOT}")
+        print(f"debug: {'enabled' if os.environ.get('SHADOW_AI_DEBUG') else 'disabled (set SHADOW_AI_DEBUG=1)'}")
+        print(f"whisper backend: logged in app console on local mode startup")
         return 0
 
     npm = npm_command()

@@ -31,7 +31,7 @@ function createWindow(sendToRenderer, geminiSessionRef) {
         alwaysOnTop: true,
         webPreferences: {
             nodeIntegration: true,
-            contextIsolation: false, // TODO: change to true
+            contextIsolation: false, // requires nodeIntegration for AudioWorklet + IPC
             backgroundThrottling: false,
             enableBlinkFeatures: 'GetDisplayMedia',
             webSecurity: true,
