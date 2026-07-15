@@ -94,12 +94,16 @@ function getProfile() {
                 try {
                     const buf = Buffer.from(val, 'base64');
                     const decrypted = safeStorage.decryptString(buf);
-                    // Strings stored directly; arrays/objects were JSON.stringify'd
                     const defaultVal = DEFAULT_PROFILE[key];
                     profile[key] = Array.isArray(defaultVal) ? JSON.parse(decrypted) : decrypted;
                 } catch {
                     profile[key] = DEFAULT_PROFILE[key];
                 }
+            } else {
+                // safeStorage unavailable — value was stored as plaintext fallback
+                const defaultVal = DEFAULT_PROFILE[key];
+                try { profile[key] = Array.isArray(defaultVal) ? JSON.parse(val) : val; }
+                catch { profile[key] = defaultVal; }
             }
         }
     }
