@@ -643,6 +643,7 @@ export class ShadowAIApp extends LitElement {
                 this.loadProviderStatus();
             };
             ipcRenderer.on('provider-notification', this._providerNotificationHandler);
+            ipcRenderer.on('clear-current-response', () => this.clearCurrentResponse());
         }
         this.loadProviderStatus();
         this._providerStatusTimer = setInterval(() => this.loadProviderStatus(), 5000);
@@ -659,6 +660,7 @@ export class ShadowAIApp extends LitElement {
             ipcRenderer.removeAllListeners('click-through-toggled');
             ipcRenderer.removeAllListeners('reconnect-failed');
             ipcRenderer.removeAllListeners('whisper-downloading');
+            ipcRenderer.removeAllListeners('clear-current-response');
             if (this._interimTranscriptionHandler) {
                 ipcRenderer.removeListener('interim-transcription', this._interimTranscriptionHandler);
             }
@@ -760,6 +762,15 @@ export class ShadowAIApp extends LitElement {
         }
         this._awaitingNewResponse = false;
         this.requestUpdate();
+    }
+
+    clearCurrentResponse() {
+        // Remove the last (partial) response when barge-in cancels the answer stream
+        if (this.responses.length > 0) {
+            this.responses = this.responses.slice(0, -1);
+            this.currentResponseIndex = Math.min(this.currentResponseIndex, this.responses.length - 1);
+            this.requestUpdate();
+        }
     }
 
     updateCurrentResponse(response) {

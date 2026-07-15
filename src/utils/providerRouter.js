@@ -169,6 +169,7 @@ async function streamWithFallback({
     onProviderFailure = () => {},
     onProviderSelected = () => {},
     fetchImpl = fetch,
+    signal: externalSignal = null, // Optional external AbortSignal for barge-in cancellation
 }) {
     const failures = [];
     const compatibleProviders = providers.filter(item => (item.transport || 'openai') === 'openai');
@@ -178,6 +179,15 @@ async function streamWithFallback({
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), PROVIDER_REQUEST_TIMEOUT_MS);
+            // Merge with external signal (barge-in) — if either aborts, the request stops
+            if (externalSignal) {
+                const onExternalAbort = () => controller.abort();
+                externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+                // Clean up listener if the internal controller fires first
+                controller.signal.addEventListener('abort', () => {
+                    externalSignal.removeEventListener('abort', onExternalAbort);
+                }, { once: true });
+            }
 
             try {
                 response = await fetchImpl(`${provider.baseUrl}/chat/completions`, {

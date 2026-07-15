@@ -56,6 +56,20 @@ let currentSystemPrompt = null;
 // Debug / timing flag (set SHADOW_AI_DEBUG=1 in environment or .env)
 const isDebug = Boolean(process.env.SHADOW_AI_DEBUG) || Boolean(process.env.DEBUG);
 
+// Barge-in support: external AbortController for the currently-streaming answer.
+// When new speech is detected mid-answer, this is aborted to cancel the stream.
+let _currentAnswerAbort = null;
+
+function cancelCurrentAnswer() {
+    if (_currentAnswerAbort) {
+        if (isDebug) console.log('[Barge-in] Cancelling current answer stream');
+        _currentAnswerAbort.abort();
+        _currentAnswerAbort = null;
+    }
+    // Clear any partial response from the renderer
+    sendToRenderer('clear-current-response');
+}
+
 // Gemini Live model configuration (Step C1)
 // Models to try in order when connecting a Live session.
 // If GEMINI_LIVE_MODEL is set in env, only that model is attempted.
@@ -268,6 +282,8 @@ function stripThinkingTags(text) {
 }
 
 async function sendToGroq(transcription) {
+    // If there's an active answer being cancelled, skip starting a new one
+    if (!_currentAnswerAbort || _currentAnswerAbort.signal.aborted) return;
     const groqApiKey = getGroqApiKey();
     if (!groqApiKey) {
         console.log('No Groq API key configured, skipping Groq response');
@@ -385,6 +401,9 @@ async function sendToGroq(transcription) {
 }
 
 async function sendToGeminiText(transcription, appendUser = true) {
+    // If answer was cancelled (barge-in), skip
+    if (!_currentAnswerAbort || _currentAnswerAbort.signal.aborted) return null;
+
     const apiKey = getApiKey();
     if (!apiKey) {
         console.log('No Gemini API key configured');
@@ -516,6 +535,9 @@ async function sendToAnswerProvider(transcription) {
         ({ groq: 'Groq', openrouter: 'OpenRouter', openai: 'OpenAI', perplexity: 'Perplexity', nvidia: 'NVIDIA' })[provider] || provider;
 
     try {
+        // Create a fresh abort controller for this answer stream (enables barge-in)
+        _currentAnswerAbort = new AbortController();
+
         const result = await streamWithFallback({
             providers: genericProviders,
             messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...(currentSession ? currentSession.groqHistory : [])],
@@ -531,14 +553,19 @@ async function sendToAnswerProvider(transcription) {
                     ? `${providerLabel(provider)} unavailable (${reason}). Switching to ${providerLabel(nextProvider)}.`
                     : `${providerLabel(provider)} unavailable (${reason}).`;
                 sendToRenderer('provider-notification', { type: 'warning', message });
-            },
-            onProviderSelected: ({ provider }) => {
+            },                onProviderSelected: ({ provider }) => {
                 sendToRenderer('provider-notification', {
                     type: 'success',
                     message: fallbackOccurred ? `Fallback active: using ${providerLabel(provider)}.` : `Using ${providerLabel(provider)}.`,
                 });
             },
+            signal: _currentAnswerAbort.signal,
         });
+
+        // Clean up abort controller now that streaming is done
+        if (_currentAnswerAbort && !_currentAnswerAbort.signal.aborted) {
+            _currentAnswerAbort = null;
+        }
 
         const cleanedResponse = stripThinkingTags(result.text);
         if (currentSession) currentSession.groqHistory.push({ role: 'assistant', content: cleanedResponse });
@@ -547,6 +574,11 @@ async function sendToAnswerProvider(transcription) {
         sendToRenderer('update-status', 'Listening...');
         return result;
     } catch (error) {
+        // If the stream was cancelled due to barge-in, don't show error notifications
+        if (error.name === 'AbortError' || error.message?.includes('abor')) {
+            if (isDebug) console.log('[Barge-in] Answer stream cancelled, new turn starting');
+            return null;
+        }
         console.warn('Hosted answer providers failed:', error.failures || error.message);
         if (providers.some(provider => provider.id === 'gemini')) {
             sendToRenderer('provider-notification', { type: 'warning', message: 'Hosted providers unavailable. Switching to Gemini.' });
@@ -624,6 +656,22 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         // Handle input transcription (what was spoken)
                         if (!currentSession) currentSession = createSessionState();
                         const s = currentSession;
+
+                        const isInputTranscription = !!message.serverContent?.inputTranscription;
+
+                        // Barge-in detection: if the user starts speaking while an answer is streaming,
+                        // cancel the current answer stream and reset state for the new turn.
+                        if (isInputTranscription && s.answerFired && !s.messageBuffer) {
+                            if (isDebug) console.log('[Barge-in] User started speaking mid-answer, cancelling stream');
+                            cancelCurrentAnswer();
+                            // Reset state so the new turn can start fresh
+                            s.answerFired = false;
+                            s.transcription = '';
+                            s.turnStart = 0;
+                            s.lastInputTime = 0;
+                            s.messageBuffer = '';
+                            sendToRenderer('update-status', 'Listening... (interrupted)');
+                        }
 
                         if (message.serverContent?.inputTranscription?.results) {
                             s.transcription += formatSpeakerResults(message.serverContent.inputTranscription.results);
