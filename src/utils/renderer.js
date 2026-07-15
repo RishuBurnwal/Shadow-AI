@@ -826,6 +826,16 @@ ipcRenderer.on('save-session-context', async (event, data) => {
     }
 });
 
+// Listen for session summary from main process on close
+ipcRenderer.on('save-session-summary', async (event, data) => {
+    try {
+        await storage.saveSession(data.sessionId, { sessionNote: data.summary });
+        console.log('Session summary saved:', data.sessionId);
+    } catch (error) {
+        console.error('Error saving session summary:', error);
+    }
+});
+
 // Listen for screen analysis responses (from ctrl+enter)
 ipcRenderer.on('save-screen-analysis', async (event, data) => {
     try {

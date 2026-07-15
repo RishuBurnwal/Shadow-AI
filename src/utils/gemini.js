@@ -281,6 +281,42 @@ function stripThinkingTags(text) {
     return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
 
+async function generateSessionSummary(history) {
+    if (!history || history.length < 2) return '';
+
+    const turns = history.map(t =>
+        `User: ${(t.transcription || '').trim()}\nAssistant: ${(t.ai_response || '').trim()}`
+    ).join('\n\n');
+    if (!turns.trim()) return '';
+
+    const summaryPrompt = `Summarize the following conversation in 1-2 sentences:\n\n${turns}\n\nSummary:`;
+
+    try {
+        const credentials = syncProviderEnvironment();
+        const env = {
+            ...process.env,
+            GROQ_API_KEY: getGroqApiKey() || process.env.GROQ_API_KEY,
+            GEMINI_API_KEY: getApiKey() || process.env.GEMINI_API_KEY,
+            OPENROUTER_API_KEY: credentials.openrouterApiKey || process.env.OPENROUTER_API_KEY,
+            OPENAI_API_KEY: credentials.openaiApiKey || process.env.OPENAI_API_KEY,
+            PERPLEXITY_API_KEY: credentials.perplexityApiKey || process.env.PERPLEXITY_API_KEY,
+            NVIDIA_API_KEY: credentials.nvidiaApiKey || process.env.NVIDIA_API_KEY,
+        };
+        const providers = getConfiguredProviders(env);
+        const openaiProviders = providers.filter(p => (p.transport || 'openai') === 'openai');
+        if (openaiProviders.length === 0) return '';
+
+        const result = await streamWithFallback({
+            providers: openaiProviders,
+            messages: [{ role: 'user', content: summaryPrompt }],
+            onToken: () => {},
+        });
+        return result.text.trim();
+    } catch {
+        return '';
+    }
+}
+
 async function sendToGroq(transcription) {
     // If there's an active answer being cancelled, skip starting a new one
     if (!_currentAnswerAbort || _currentAnswerAbort.signal.aborted) return;
@@ -1273,6 +1309,16 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('close-session', async event => {
         try {
+            // Generate session summary before closing (non-blocking, fire-and-forget)
+            if (conversationHistory.length >= 2) {
+                generateSessionSummary(conversationHistory).then(summary => {
+                    if (summary && currentSessionId) {
+                        console.log('Session summary:', summary);
+                        sendToRenderer('save-session-summary', { sessionId: currentSessionId, summary });
+                    }
+                }).catch(() => {});
+            }
+
             stopMacOSAudioCapture();
 
             if (currentProviderMode === 'cloud') {
