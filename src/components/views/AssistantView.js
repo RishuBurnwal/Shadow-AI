@@ -225,6 +225,45 @@ export class AssistantView extends LitElement {
             text-align: center;
         }
 
+        /* ── Interim transcription caption ── */
+
+        .caption-bar {
+            padding: var(--space-xs) var(--space-md);
+            border-top: 1px solid var(--border);
+            background: var(--bg-surface);
+            font-size: var(--font-size-xs);
+            min-height: 0;
+            max-height: 60px;
+            overflow-y: auto;
+            display: flex;
+            align-items: center;
+            gap: var(--space-xs);
+        }
+
+        .caption-bar:empty {
+            display: none;
+        }
+
+        .caption-label {
+            color: var(--text-muted);
+            flex-shrink: 0;
+            font-family: var(--font-mono);
+            font-size: 10px;
+        }
+
+        .caption-text {
+            color: var(--text-secondary);
+        }
+
+        .caption-text.final {
+            color: var(--text-primary);
+            font-weight: var(--font-weight-medium);
+        }
+
+        .caption-text.partial {
+            opacity: 0.55;
+        }
+
         /* ── Bottom input bar ── */
 
         .input-bar {
@@ -329,6 +368,7 @@ export class AssistantView extends LitElement {
         shouldAnimateResponse: { type: Boolean },
         responseTextOpacity: { type: Number },
         responseTextColor: { type: String },
+        interimTranscription: { type: Object },
         isAnalyzing: { type: Boolean, state: true },
     };
 
@@ -732,6 +772,19 @@ export class AssistantView extends LitElement {
                                       />
                                   </svg>
                               </button>
+                          </div>
+                      `
+                    : ''
+            }
+
+            ${
+                this.interimTranscription && this.interimTranscription.text
+                    ? html`
+                          <div class="caption-bar">
+                              <span class="caption-label">${this.interimTranscription.isFinal ? 'YOU:' : 'LISTENING:'}</span>
+                              <span class="caption-text ${this.interimTranscription.isFinal ? 'final' : 'partial'}"
+                                  >${this.interimTranscription.text}</span
+                              >
                           </div>
                       `
                     : ''

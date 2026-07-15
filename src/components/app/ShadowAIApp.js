@@ -528,6 +528,7 @@ export class ShadowAIApp extends LitElement {
         backgroundTransparency: { type: Number },
         responseTextOpacity: { type: Number },
         responseTextColor: { type: String },
+        interimTranscription: { type: Object },
         _providerNotification: { state: true },
         _providerStatus: { state: true },
     };
@@ -559,6 +560,7 @@ export class ShadowAIApp extends LitElement {
         this.backgroundTransparency = 0.8;
         this.responseTextOpacity = 1;
         this.responseTextColor = '#f5f5f5';
+        this.interimTranscription = null;
         this._providerNotification = null;
         this._providerNotificationTimer = null;
         this._providerStatus = { selected: 'default', effective: 'auto', providers: {} };
@@ -631,6 +633,11 @@ export class ShadowAIApp extends LitElement {
             ipcRenderer.on('whisper-downloading', (_, downloading) => {
                 this._whisperDownloading = downloading;
             });
+            this._interimTranscriptionHandler = (_, data) => {
+                this.interimTranscription = data;
+                this.requestUpdate();
+            };
+            ipcRenderer.on('interim-transcription', this._interimTranscriptionHandler);
             this._providerNotificationHandler = (_, notification) => {
                 this.showProviderNotification(notification);
                 this.loadProviderStatus();
@@ -652,6 +659,9 @@ export class ShadowAIApp extends LitElement {
             ipcRenderer.removeAllListeners('click-through-toggled');
             ipcRenderer.removeAllListeners('reconnect-failed');
             ipcRenderer.removeAllListeners('whisper-downloading');
+            if (this._interimTranscriptionHandler) {
+                ipcRenderer.removeListener('interim-transcription', this._interimTranscriptionHandler);
+            }
             if (this._providerNotificationHandler) {
                 ipcRenderer.removeListener('provider-notification', this._providerNotificationHandler);
             }
@@ -892,6 +902,7 @@ export class ShadowAIApp extends LitElement {
         shadowAI.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
         this.responses = [];
         this.currentResponseIndex = -1;
+        this.interimTranscription = null;
         this.startTime = Date.now();
         this.sessionActive = true;
         this.currentView = 'assistant';
@@ -1042,6 +1053,7 @@ export class ShadowAIApp extends LitElement {
                         .selectedProfile=${this.selectedProfile}
                         .responseTextOpacity=${this.responseTextOpacity}
                         .responseTextColor=${this.responseTextColor}
+                        .interimTranscription=${this.interimTranscription}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
                         @response-index-changed=${this.handleResponseIndexChanged}

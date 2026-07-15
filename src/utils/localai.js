@@ -83,15 +83,6 @@ function calculateRMS(pcm16Buffer) {
     return Math.sqrt(sumSquares / samples);
 }
 
-/**
- * Convert a PCM16 buffer to Float32Array for the Silero VAD model.
- * Reuses pcm16ToFloat32() to avoid duplicating the conversion logic.
- * The result is used for frame-based processing (512-sample frames at 16kHz).
- */
-function pcm16ToFloat32Frames(pcm16Buffer) {
-    return pcm16ToFloat32(pcm16Buffer);
-}
-
 async function processVAD(pcm16kBuffer) {
     const rms = calculateRMS(pcm16kBuffer);
 
@@ -102,7 +93,7 @@ async function processVAD(pcm16kBuffer) {
     let isVoice = isLoud;
     if (sileroVad && isLoud) {
         // Process audio through Silero VAD in 512-sample frames (32ms at 16kHz)
-        const float32Audio = pcm16ToFloat32Frames(pcm16kBuffer);
+        const float32Audio = pcm16ToFloat32(pcm16kBuffer);
         const numFrames = Math.floor(float32Audio.length / FRAME_SIZE);
         let speechFrameCountSilero = 0;
         const totalFrames = Math.max(1, numFrames);
