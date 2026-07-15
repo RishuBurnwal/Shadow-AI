@@ -8,6 +8,7 @@ const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = requir
 const storage = require('./storage');
 const providerEnv = require('./utils/providerEnv');
 const { PROVIDER_DEFINITIONS, getProviderRuntimeStatus, getConfiguredProviders, discoverProviderModels } = require('./utils/providerRouter');
+const { providerLabelMap } = require('./utils/providers.config');
 
 const geminiSessionRef = { current: null };
 let mainWindow = null;
@@ -310,6 +311,8 @@ function setupGeneralIpcHandlers() {
             ...configured,
             selected: storage.getPreferences().answerProvider || initialSelection,
             effective: process.env.SHADOW_AI_PROVIDER || 'auto',
+            providerLabels: providerLabelMap(),
+            providerIds: PROVIDER_DEFINITIONS.map(p => p.id),
             providers: Object.fromEntries(
                 Object.entries(getProviderRuntimeStatus(configured)).map(([provider, status]) => {
                     const definition = providersById.get(provider);

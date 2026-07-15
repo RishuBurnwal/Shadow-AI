@@ -2,7 +2,20 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const CONFIG_VERSION = 1;
+// Lazy-loaded safeStorage reference (may not be available in all contexts)
+let _safeStorage = null;
+function getSafeStorage() {
+    if (_safeStorage === undefined) {
+        try {
+            _safeStorage = require('electron').safeStorage;
+        } catch {
+            _safeStorage = null;
+        }
+    }
+    return _safeStorage;
+}
+
+const CONFIG_VERSION = 2;
 
 // Default values
 const DEFAULT_CONFIG = {
@@ -11,14 +24,9 @@ const DEFAULT_CONFIG = {
     layout: 'normal',
 };
 
-const DEFAULT_CREDENTIALS = {
-    apiKey: '',
-    groqApiKey: '',
-    openrouterApiKey: '',
-    openaiApiKey: '',
-    perplexityApiKey: '',
-    nvidiaApiKey: '',
-};
+const { defaultCredentials } = require('./utils/providers.config');
+
+const DEFAULT_CREDENTIALS = defaultCredentials();
 
 const DEFAULT_PREFERENCES = {
     customPrompt: '',
@@ -58,6 +66,11 @@ const DEFAULT_LIMITS = {
 
 // Get the config directory path based on OS
 function getConfigDir() {
+    // Allow overriding via env var (used in tests)
+    if (process.env.SHADOW_AI_CONFIG_DIR) {
+        return path.resolve(process.env.SHADOW_AI_CONFIG_DIR);
+    }
+
     const platform = os.platform();
     let configDir;
 
@@ -125,54 +138,148 @@ function writeJsonFile(filePath, data) {
     }
 }
 
-// Check if we need to reset (no configVersion or wrong version)
-function needsReset() {
-    const configPath = getConfigPath();
-    if (!fs.existsSync(configPath)) {
-        return true;
-    }
+// ── Additive config migration system ──
+//
+// Instead of wiping data on version mismatch (old behavior), we run
+// sequential migration functions. Each function receives the existing
+// data and returns the upgraded version. Only truly corrupt files
+// fall back to defaults.
 
-    try {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        return !config.configVersion || config.configVersion !== CONFIG_VERSION;
-    } catch {
-        return true;
-    }
+const CONFIG_MIGRATIONS = {
+    // v0 (no version field) → v1: add version and required fields
+    0: (data) => ({
+        ...data,
+        configVersion: 1,
+        onboarded: data.onboarded ?? false,
+        layout: data.layout || 'normal',
+    }),
+    // v1 → v2: placeholder — all existing fields preserved
+    1: (data) => ({
+        ...data,
+        configVersion: 2,
+    }),
+};
+
+const PREFERENCES_MIGRATIONS = {
+    // v0 (any pre-migration preferences) → current defaults merged over existing
+    0: (data) => ({
+        ...DEFAULT_PREFERENCES,
+        ...data,
+        selectedLanguage: normalizeLanguageCode(data.selectedLanguage),
+    }),
+};
+
+function getCurrentVersion(data) {
+    if (!data || typeof data !== 'object') return 0;
+    const v = Number(data.configVersion);
+    return Number.isFinite(v) && v >= 0 ? v : 0;
 }
 
-// Wipe and reinitialize the config directory
-function resetConfigDir() {
-    const configDir = getConfigDir();
-
-    console.log('Resetting config directory...');
-
-    // Remove existing directory if it exists
-    if (fs.existsSync(configDir)) {
-        fs.rmSync(configDir, { recursive: true, force: true });
+/**
+ * Run pending migrations on the config object and return the upgraded version.
+ */
+function runConfigMigrations(data) {
+    let version = getCurrentVersion(data);
+    while (version < CONFIG_VERSION) {
+        const migration = CONFIG_MIGRATIONS[version];
+        if (!migration) {
+            // No migration defined for this version — skip to avoid infinite loops
+            console.warn(`No migration defined for config version ${version}, skipping to ${CONFIG_VERSION}`);
+            break;
+        }
+        try {
+            data = migration(data);
+            version = Number(data.configVersion) || version + 1;
+        } catch (err) {
+            console.error(`Config migration v${version} failed:`, err.message);
+            throw err;
+        }
     }
+    return data;
+}
 
-    // Create fresh directory structure
+/**
+ * Run pending migrations on a preferences object.
+ */
+function runPreferencesMigrations(data) {
+    // Preferences don't carry a version key — always merge defaults on top
+    // to ensure new default fields appear even for old files.
+    return PREFERENCES_MIGRATIONS[0](data || {});
+}
+
+/**
+ * Write default config, credentials, and preferences to disk.
+ * Used only for fresh installs or after corrupt-data recovery.
+ */
+function writeDefaults() {
+    const configDir = getConfigDir();
     fs.mkdirSync(configDir, { recursive: true });
     fs.mkdirSync(getHistoryDir(), { recursive: true });
 
-    // Initialize with defaults
     writeJsonFile(getConfigPath(), DEFAULT_CONFIG);
     writeJsonFile(getCredentialsPath(), DEFAULT_CREDENTIALS);
     writeJsonFile(getPreferencesPath(), DEFAULT_PREFERENCES);
-
-    console.log('Config directory initialized with defaults');
 }
 
-// Initialize storage - call this on app startup
+/**
+ * Initialize storage — runs automatically on app startup.
+ *
+ * - No config file → write defaults (fresh install)
+ * - Corrupt config → warn, write defaults (safe fallback)
+ * - Old version → run pending migrations in order, preserving user data
+ * - Current version → nothing (just ensure dirs exist)
+ */
 function initializeStorage() {
-    if (needsReset()) {
-        resetConfigDir();
-    } else {
-        // Ensure history directory exists
-        const historyDir = getHistoryDir();
-        if (!fs.existsSync(historyDir)) {
-            fs.mkdirSync(historyDir, { recursive: true });
+    const configPath = getConfigPath();
+    const configDir = getConfigDir();
+
+    if (!fs.existsSync(configPath)) {
+        // Fresh install — write defaults
+        writeDefaults();
+        return;
+    }
+
+    // Read existing config and run migrations
+    let raw;
+    try {
+        raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (err) {
+        // Corrupt file — fall back to defaults
+        console.warn('Config file corrupt, reverting to defaults:', err.message);
+        writeDefaults();
+        return;
+    }
+
+    const currentVersion = getCurrentVersion(raw);
+
+    if (currentVersion < CONFIG_VERSION) {
+        try {
+            raw = runConfigMigrations(raw);
+            writeJsonFile(getConfigPath(), raw);
+        } catch (err) {
+            // Migration failed — safe fallback
+            console.warn('Config migration failed, reverting to defaults:', err.message);
+            writeDefaults();
+            return;
         }
+    }
+
+    // Also migrate preferences file if it exists
+    const prefsPath = getPreferencesPath();
+    if (fs.existsSync(prefsPath)) {
+        try {
+            const prefsRaw = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+            const migratedPrefs = runPreferencesMigrations(prefsRaw);
+            writeJsonFile(prefsPath, migratedPrefs);
+        } catch {
+            // Corrupt preferences — silently overwrite with defaults
+            writeJsonFile(prefsPath, DEFAULT_PREFERENCES);
+        }
+    }
+
+    // Ensure directories exist
+    if (!fs.existsSync(getHistoryDir())) {
+        fs.mkdirSync(getHistoryDir(), { recursive: true });
     }
 }
 
@@ -194,16 +301,117 @@ function updateConfig(key, value) {
     return writeJsonFile(getConfigPath(), config);
 }
 
-// ============ CREDENTIALS ============
+// ============ CREDENTIALS (encrypted at rest via Electron safeStorage) ============
 
+const CREDENTIALS_ENCRYPTION_MARKER = '_encrypted';
+const CREDENTIALS_MARKER_VALUE = 'v1';
+
+/**
+ * Get credentials, decrypting values stored with safeStorage.
+ * Automatically migrates legacy plaintext credentials on first read.
+ */
 function getCredentials() {
-    return readJsonFile(getCredentialsPath(), DEFAULT_CREDENTIALS);
+    const raw = readJsonFile(getCredentialsPath(), null);
+
+    // First-time: no file yet → return defaults
+    if (raw === null) {
+        return { ...DEFAULT_CREDENTIALS };
+    }
+
+    // Legacy plaintext format or no encryption marker → migrate in memory, write back
+    if (!raw[CREDENTIALS_ENCRYPTION_MARKER]) {
+        const credentials = { ...DEFAULT_CREDENTIALS };
+        for (const key of Object.keys(DEFAULT_CREDENTIALS)) {
+            credentials[key] = raw[key] || '';
+        }
+        // Re-save encrypted (this calls setCredentials which encrypts)
+        setCredentials(credentials);
+        return credentials;
+    }
+
+    // Encrypted format — decrypt each value
+    const safeStorage = getSafeStorage();
+    const credentials = { ...DEFAULT_CREDENTIALS };
+    for (const key of Object.keys(DEFAULT_CREDENTIALS)) {
+        const encryptedBase64 = raw[key];
+        if (encryptedBase64 && typeof encryptedBase64 === 'string' && encryptedBase64.length > 0) {
+            if (safeStorage && safeStorage.isEncryptionAvailable()) {
+                try {
+                    const encryptedBuffer = Buffer.from(encryptedBase64, 'base64');
+                    credentials[key] = safeStorage.decryptString(encryptedBuffer);
+                } catch {
+                    credentials[key] = '';
+                }
+            } else {
+                credentials[key] = '';
+            }
+        }
+    }
+    return credentials;
 }
 
+/**
+ * Save credentials, encrypting each value with safeStorage when available.
+ * Merges with existing credentials so setting a single key doesn't wipe others.
+ */
 function setCredentials(credentials) {
-    const current = getCredentials();
-    const updated = { ...current, ...credentials };
-    return writeJsonFile(getCredentialsPath(), updated);
+    // Read existing credentials from disk and merge
+    const existing = readJsonFile(getCredentialsPath(), {});
+    const isExistingEncrypted = existing[CREDENTIALS_ENCRYPTION_MARKER];
+
+    // Build the plaintext merged credentials
+    const merged = { ...DEFAULT_CREDENTIALS };
+    for (const key of Object.keys(DEFAULT_CREDENTIALS)) {
+        // If the new call provides this key, use it; otherwise try existing (decrypt if needed)
+        if (credentials[key] !== undefined) {
+            merged[key] = credentials[key] || '';
+        } else if (existing[key]) {
+            if (isExistingEncrypted) {
+                // Try to decrypt existing value
+                const safeStorage = getSafeStorage();
+                if (safeStorage && safeStorage.isEncryptionAvailable()) {
+                    try {
+                        const encryptedBuffer = Buffer.from(existing[key], 'base64');
+                        merged[key] = safeStorage.decryptString(encryptedBuffer);
+                    } catch {
+                        merged[key] = '';
+                    }
+                } else {
+                    merged[key] = '';
+                }
+            } else {
+                merged[key] = existing[key] || '';
+            }
+        }
+    }
+
+    const safeStorage = getSafeStorage();
+    const encrypted = {};
+
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+        // Encrypt each value
+        for (const key of Object.keys(DEFAULT_CREDENTIALS)) {
+            const value = merged[key];
+            if (value && typeof value === 'string' && value.length > 0) {
+                try {
+                    const encryptedBuffer = safeStorage.encryptString(value);
+                    encrypted[key] = encryptedBuffer.toString('base64');
+                } catch {
+                    encrypted[key] = '';
+                }
+            } else {
+                encrypted[key] = '';
+            }
+        }
+        encrypted[CREDENTIALS_ENCRYPTION_MARKER] = CREDENTIALS_MARKER_VALUE;
+    } else {
+        // safeStorage unavailable (e.g., headless test env) — store plaintext
+        for (const key of Object.keys(DEFAULT_CREDENTIALS)) {
+            encrypted[key] = merged[key] || '';
+        }
+    }
+
+    return writeJsonFile(getCredentialsPath(), encrypted);
 }
 
 function getApiKey() {
@@ -518,7 +726,11 @@ function deleteAllSessions() {
 // ============ CLEAR ALL DATA ============
 
 function clearAllData() {
-    resetConfigDir();
+    const configDir = getConfigDir();
+    if (fs.existsSync(configDir)) {
+        fs.rmSync(configDir, { recursive: true, force: true });
+    }
+    writeDefaults();
     return true;
 }
 

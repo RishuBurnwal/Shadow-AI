@@ -1,5 +1,6 @@
 // renderer.js
 const { ipcRenderer } = require('electron');
+const path = require('path');
 
 let mediaStream = null;
 let screenshotInterval = null;
@@ -10,6 +11,29 @@ let audioBuffer = [];
 const SAMPLE_RATE = 24000;
 const AUDIO_CHUNK_DURATION = 0.1; // seconds
 const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
+
+const fs = require('fs');
+
+// Cache the Blob URL so addModule calls reuse the same one (idempotent on same AudioContext)
+let _cachedWorkletBlobUrl = null;
+
+/**
+ * Resolve the AudioWorkletProcessor module file as a blob:// URL.
+ *
+ * Chromium's audioWorklet.addModule() has strict CORS requirements and often
+ * rejects file:// URLs (the default Electron origin). Creating a Blob URL
+ * gives us a synthetic origin that satisfies the same-origin check without
+ * needing a custom protocol handler.
+ */
+function getAudioWorkletUrl() {
+    if (_cachedWorkletBlobUrl) return _cachedWorkletBlobUrl;
+
+    const workletPath = path.join(__dirname, '..', 'audio', 'audio-chunk-processor.js');
+    const code = fs.readFileSync(workletPath, 'utf8');
+    const blob = new Blob([code], { type: 'application/javascript' });
+    _cachedWorkletBlobUrl = URL.createObjectURL(blob);
+    return _cachedWorkletBlobUrl;
+}
 
 let hiddenVideo = null;
 let offscreenCanvas = null;
@@ -239,7 +263,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         video: false,
                     });
                     console.log('macOS microphone capture started');
-                    setupLinuxMicProcessing(micStream);
+                    setupLinuxMicProcessing(micStream).catch(err => {
+                        console.error('macOS mic AudioWorklet setup failed:', err);
+                    });
                 } catch (micError) {
                     console.warn('Failed to get microphone access on macOS:', micError);
                 }
@@ -266,7 +292,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 console.log('Linux system audio capture via getDisplayMedia succeeded');
 
                 // Setup audio processing for Linux system audio
-                setupLinuxSystemAudioProcessing();
+                setupLinuxSystemAudioProcessing().catch(err => {
+                    console.error('Linux system AudioWorklet setup failed:', err);
+                });
             } catch (systemAudioError) {
                 console.warn('System audio via getDisplayMedia failed, trying screen-only capture:', systemAudioError);
 
@@ -299,7 +327,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                     console.log('Linux microphone capture started');
 
                     // Setup audio processing for microphone on Linux
-                    setupLinuxMicProcessing(micStream);
+                    setupLinuxMicProcessing(micStream).catch(err => {
+                        console.error('Linux mic AudioWorklet setup failed:', err);
+                    });
                 } catch (micError) {
                     console.warn('Failed to get microphone access on Linux:', micError);
                     // Continue without microphone if permission denied
@@ -327,7 +357,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             console.log('Windows capture started with loopback audio');
 
             // Setup audio processing for Windows loopback audio only
-            setupWindowsLoopbackProcessing();
+            setupWindowsLoopbackProcessing().catch(err => {
+                console.error('Windows loopback AudioWorklet setup failed:', err);
+            });
 
             if (audioMode === 'mic_only' || audioMode === 'both') {
                 let micStream = null;
@@ -343,7 +375,9 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         video: false,
                     });
                     console.log('Windows microphone capture started');
-                    setupLinuxMicProcessing(micStream);
+                    setupLinuxMicProcessing(micStream).catch(err => {
+                        console.error('Windows mic AudioWorklet setup failed:', err);
+                    });
                 } catch (micError) {
                     console.warn('Failed to get microphone access on Windows:', micError);
                 }
@@ -364,97 +398,121 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     }
 }
 
-function setupLinuxMicProcessing(micStream) {
+async function setupLinuxMicProcessing(micStream) {
     // Setup microphone audio processing for Linux
     const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
     const micSource = micAudioContext.createMediaStreamSource(micStream);
-    const micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
+    // Register the AudioWorkletProcessor module
+    const workletUrl = getAudioWorkletUrl();
+    await micAudioContext.audioWorklet.addModule(workletUrl);
 
-    micProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
+    // Create AudioWorkletNode with channel name for mic audio
+    const micNode = new AudioWorkletNode(micAudioContext, 'audio-chunk-processor', {
+        processorOptions: {
+            channelName: 'send-mic-audio-content',
+            mimeType: 'audio/pcm;rate=24000',
+        },
+    });
 
-        // Process audio in chunks
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
+    // Handle audio chunks from the worklet thread
+    micNode.port.onmessage = event => {
+        const { channelName, mimeType, data } = event.data;
+        if (!data) return;
 
-            await ipcRenderer.invoke('send-mic-audio-content', {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            });
-        }
+        // Base64 encode the Int16 buffer for IPC transport
+        const base64Data = arrayBufferToBase64(data);
+
+        // Fire-and-forget send instead of request/response invoke to reduce latency
+        ipcRenderer.send(channelName, {
+            data: base64Data,
+            mimeType: mimeType,
+        });
     };
 
-    micSource.connect(micProcessor);
-    micProcessor.connect(micAudioContext.destination);
+    micSource.connect(micNode);
+    micNode.connect(micAudioContext.destination);
 
-    // Store processor reference for cleanup
-    micAudioProcessor = micProcessor;
+    // Store references for cleanup
+    micAudioProcessor = micNode;
 }
 
-function setupLinuxSystemAudioProcessing() {
+async function setupLinuxSystemAudioProcessing() {
     // Setup system audio processing for Linux (from getDisplayMedia)
     audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
     const source = audioContext.createMediaStreamSource(mediaStream);
-    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
+    // Register the AudioWorkletProcessor module
+    const workletUrl = getAudioWorkletUrl();
+    await audioContext.audioWorklet.addModule(workletUrl);
 
-    audioProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
+    // Create AudioWorkletNode with default channel name for system audio
+    const node = new AudioWorkletNode(audioContext, 'audio-chunk-processor', {
+        processorOptions: {
+            channelName: 'send-audio-content',
+            mimeType: 'audio/pcm;rate=24000',
+        },
+    });
 
-        // Process audio in chunks
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
+    // Handle audio chunks from the worklet thread
+    node.port.onmessage = event => {
+        const { channelName, mimeType, data } = event.data;
+        if (!data) return;
 
-            await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            });
-        }
+        // Base64 encode the Int16 buffer for IPC transport
+        const base64Data = arrayBufferToBase64(data);
+
+        // Fire-and-forget send instead of request/response invoke to reduce latency
+        ipcRenderer.send(channelName, {
+            data: base64Data,
+            mimeType: mimeType,
+        });
     };
 
-    source.connect(audioProcessor);
-    audioProcessor.connect(audioContext.destination);
+    source.connect(node);
+    node.connect(audioContext.destination);
+
+    // Store reference for cleanup
+    audioProcessor = node;
 }
 
-function setupWindowsLoopbackProcessing() {
+async function setupWindowsLoopbackProcessing() {
     // Setup audio processing for Windows loopback audio only
     audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
     const source = audioContext.createMediaStreamSource(mediaStream);
-    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
 
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
+    // Register the AudioWorkletProcessor module
+    const workletUrl = getAudioWorkletUrl();
+    await audioContext.audioWorklet.addModule(workletUrl);
 
-    audioProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
+    // Create AudioWorkletNode with default channel name for system audio
+    const node = new AudioWorkletNode(audioContext, 'audio-chunk-processor', {
+        processorOptions: {
+            channelName: 'send-audio-content',
+            mimeType: 'audio/pcm;rate=24000',
+        },
+    });
 
-        // Process audio in chunks
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
+    // Handle audio chunks from the worklet thread
+    node.port.onmessage = event => {
+        const { channelName, mimeType, data } = event.data;
+        if (!data) return;
 
-            await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            });
-        }
+        // Base64 encode the Int16 buffer for IPC transport
+        const base64Data = arrayBufferToBase64(data);
+
+        // Fire-and-forget send instead of request/response invoke to reduce latency
+        ipcRenderer.send(channelName, {
+            data: base64Data,
+            mimeType: mimeType,
+        });
     };
 
-    source.connect(audioProcessor);
-    audioProcessor.connect(audioContext.destination);
+    source.connect(node);
+    node.connect(audioContext.destination);
+
+    // Store reference for cleanup
+    audioProcessor = node;
 }
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
@@ -680,6 +738,12 @@ function stopCapture() {
     if (audioContext) {
         audioContext.close();
         audioContext = null;
+    }
+
+    // Revoke the worklet Blob URL to prevent minor memory leak
+    if (_cachedWorkletBlobUrl) {
+        URL.revokeObjectURL(_cachedWorkletBlobUrl);
+        _cachedWorkletBlobUrl = null;
     }
 
     if (mediaStream) {

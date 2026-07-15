@@ -6,14 +6,9 @@ function getEnvPath() {
     if (__dirname.includes('app.asar')) return path.join(require('../storage').getConfigDir(), '.env');
     return path.resolve(__dirname, '..', '..', '.env');
 }
-const PROVIDER_KEYS = Object.freeze({
-    gemini: { envKey: 'GEMINI_API_KEY', credential: 'apiKey' },
-    groq: { envKey: 'GROQ_API_KEY', credential: 'groqApiKey' },
-    openrouter: { envKey: 'OPENROUTER_API_KEY', credential: 'openrouterApiKey' },
-    openai: { envKey: 'OPENAI_API_KEY', credential: 'openaiApiKey' },
-    perplexity: { envKey: 'PERPLEXITY_API_KEY', credential: 'perplexityApiKey' },
-    nvidia: { envKey: 'NVIDIA_API_KEY', credential: 'nvidiaApiKey' },
-});
+const { providerKeyMapping } = require('./providers.config');
+
+const PROVIDER_KEYS = Object.freeze(providerKeyMapping());
 
 function parseEnv(content) {
     const values = {};

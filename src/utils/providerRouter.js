@@ -1,59 +1,6 @@
-const PROVIDER_DEFINITIONS = [
-    {
-        id: 'groq',
-        envKey: 'GROQ_API_KEY',
-        baseUrl: 'https://api.groq.com/openai/v1',
-        modelsUrl: 'https://api.groq.com/openai/v1/models',
-        modelEnv: 'GROQ_MODEL',
-        model: 'qwen/qwen3-32b',
-        models: ['qwen/qwen3-32b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'],
-    },
-    {
-        id: 'openrouter',
-        envKey: 'OPENROUTER_API_KEY',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        modelsUrl: 'https://openrouter.ai/api/v1/models',
-        modelEnv: 'OPENROUTER_MODEL',
-        model: 'openai/gpt-4o-mini',
-        models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct'],
-    },
-    {
-        id: 'openai',
-        envKey: 'OPENAI_API_KEY',
-        baseUrl: 'https://api.openai.com/v1',
-        modelsUrl: 'https://api.openai.com/v1/models',
-        modelEnv: 'OPENAI_MODEL',
-        model: 'gpt-4o-mini',
-        models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'],
-    },
-    {
-        id: 'perplexity',
-        envKey: 'PERPLEXITY_API_KEY',
-        baseUrl: 'https://api.perplexity.ai',
-        modelsUrl: 'https://api.perplexity.ai/models',
-        modelEnv: 'PERPLEXITY_MODEL',
-        model: 'sonar-pro',
-        models: ['sonar-pro', 'sonar', 'sonar-deep-research'],
-    },
-    {
-        id: 'nvidia',
-        envKey: 'NVIDIA_API_KEY',
-        baseUrl: 'https://integrate.api.nvidia.com/v1',
-        modelsUrl: 'https://integrate.api.nvidia.com/v1/models',
-        modelEnv: 'NVIDIA_MODEL',
-        model: 'meta/llama-3.1-70b-instruct',
-        models: ['meta/llama-3.1-70b-instruct', 'meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct'],
-    },
-    {
-        id: 'gemini',
-        envKey: 'GEMINI_API_KEY',
-        modelEnv: 'GEMINI_MODEL',
-        model: 'gemini-2.5-flash',
-        models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
-        transport: 'google',
-        modelsUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
-    },
-];
+const { PROVIDERS } = require('./providers.config');
+
+const PROVIDER_DEFINITIONS = [...PROVIDERS];
 
 const providerHealth = new Map();
 const providerModelCache = new Map();
@@ -212,6 +159,9 @@ async function readSseText(response, onToken) {
     return fullText;
 }
 
+// Timeout for hosted provider fetch calls (avoids hanging on stalled connections)
+const PROVIDER_REQUEST_TIMEOUT_MS = 10000; // 10 seconds
+
 async function streamWithFallback({
     providers,
     messages,
@@ -224,16 +174,33 @@ async function streamWithFallback({
     const compatibleProviders = providers.filter(item => (item.transport || 'openai') === 'openai');
     for (let index = 0; index < compatibleProviders.length; index++) {
         const provider = compatibleProviders[index];
+        let response;
         try {
-            const response = await fetchImpl(`${provider.baseUrl}/chat/completions`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${provider.apiKey}`,
-                    'Content-Type': 'application/json',
-                    ...(provider.id === 'openrouter' ? { 'HTTP-Referer': 'https://shadow-ai.local', 'X-Title': 'Shadow AI' } : {}),
-                },
-                body: JSON.stringify({ model: provider.model, messages, stream: true, temperature: 0.7, max_tokens: 1024 }),
-            });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), PROVIDER_REQUEST_TIMEOUT_MS);
+
+            try {
+                response = await fetchImpl(`${provider.baseUrl}/chat/completions`, {
+                    signal: controller.signal,
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${provider.apiKey}`,
+                        'Content-Type': 'application/json',
+                        ...(provider.id === 'openrouter' ? { 'HTTP-Referer': 'https://shadow-ai.local', 'X-Title': 'Shadow AI' } : {}),
+                    },
+                    body: JSON.stringify({ model: provider.model, messages, stream: true, temperature: 0.7, max_tokens: 1024 }),
+                });
+                clearTimeout(timeoutId);
+            } catch (fetchError) {
+                clearTimeout(timeoutId);
+                // Wrap AbortError into a user-friendly timeout message
+                if (fetchError.name === 'AbortError') {
+                    const timeoutError = new Error('Request timed out after ' + (PROVIDER_REQUEST_TIMEOUT_MS / 1000) + 's');
+                    timeoutError.status = 408;
+                    throw timeoutError;
+                }
+                throw fetchError;
+            }
             if (!response.ok) {
                 const detail = (await response.text().catch(() => '')).slice(0, 500);
                 const providerError = new Error(`HTTP ${response.status}`);

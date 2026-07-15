@@ -58,6 +58,10 @@ typings/
 # Yarn Integrity file
 .yarn-integrity
 
+# Playwright
+playwright-report/
+test-results/
+
 # dotenv environment variables file
 .env
 .env.test

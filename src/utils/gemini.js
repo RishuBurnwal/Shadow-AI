@@ -1,4 +1,4 @@
-const { GoogleGenAI, Modality } = require('@google/genai');
+const { GoogleGenAI } = require('@google/genai');
 const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
@@ -28,18 +28,50 @@ function getLocalAi() {
 // Provider mode: 'byok', 'cloud', or 'local'
 let currentProviderMode = 'byok';
 
-// Groq conversation history for context
-let groqConversationHistory = [];
+
+
+// Session-scoped state (replaces module-level globals for B3)
+let currentSession = null;
+
+function createSessionState() {
+    return {
+        transcription: '',         // currentTranscription
+        groqHistory: [],           // groqConversationHistory
+        messageBuffer: '',         // messageBuffer
+        answerFired: false,        // answerProviderFiredForTurn
+        turnStart: 0,              // turnStartTime
+        lastInputTime: 0,          // lastInputTranscriptionTime
+    };
+}
 
 // Conversation tracking variables
 let currentSessionId = null;
-let currentTranscription = '';
 let conversationHistory = [];
 let screenAnalysisHistory = [];
 let currentProfile = null;
 let currentCustomPrompt = null;
 let isInitializingSession = false;
 let currentSystemPrompt = null;
+
+// Debug / timing flag (set SHADOW_AI_DEBUG=1 in environment or .env)
+const isDebug = Boolean(process.env.SHADOW_AI_DEBUG) || Boolean(process.env.DEBUG);
+
+// Gemini Live model configuration (Step C1)
+// Models to try in order when connecting a Live session.
+// If GEMINI_LIVE_MODEL is set in env, only that model is attempted.
+// Otherwise all candidates are tried in order until one connects.
+const GEMINI_LIVE_MODEL_CANDIDATES = [
+    'gemini-2.5-flash-native-audio-preview-09-2025',
+    'gemini-2.5-flash-live',
+];
+
+function getGeminiLiveModelCandidates() {
+    const envModel = process.env.GEMINI_LIVE_MODEL;
+    if (envModel) {
+        return [envModel]; // If user explicitly set one, only try that
+    }
+    return [...GEMINI_LIVE_MODEL_CANDIDATES]; // Otherwise try fallbacks in order
+}
 
 function formatSpeakerResults(results) {
     let text = '';
@@ -56,7 +88,6 @@ module.exports.formatSpeakerResults = formatSpeakerResults;
 
 // Audio capture variables
 let systemAudioProc = null;
-let messageBuffer = '';
 
 // Reconnection variables
 let isUserClosing = false;
@@ -89,10 +120,9 @@ function buildContextMessage() {
 function initializeNewSession(profile = null, customPrompt = null) {
     const preferences = getPreferences();
     currentSessionId = Date.now().toString();
-    currentTranscription = '';
+    currentSession = createSessionState();
     conversationHistory = [];
     screenAnalysisHistory = [];
-    groqConversationHistory = [];
     currentProfile = profile;
     currentCustomPrompt = customPrompt;
     console.log('New conversation session started:', currentSessionId, 'profile:', profile);
@@ -256,15 +286,16 @@ async function sendToGroq(transcription) {
         return;
     }
 
-    console.log(`Sending to Groq (${modelToUse}):`, transcription.substring(0, 100) + '...');
+    if (isDebug) console.log(`Sending to Groq (${modelToUse}):`, transcription.substring(0, 100) + '...');
 
-    groqConversationHistory.push({
+    const history = currentSession ? currentSession.groqHistory : [];
+    history.push({
         role: 'user',
         content: transcription.trim(),
     });
 
-    if (groqConversationHistory.length > 20) {
-        groqConversationHistory = groqConversationHistory.slice(-20);
+    if (history.length > 20) {
+        if (currentSession) currentSession.groqHistory = history.slice(-20);
     }
 
     try {
@@ -276,7 +307,7 @@ async function sendToGroq(transcription) {
             },
             body: JSON.stringify({
                 model: modelToUse,
-                messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
+                messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...history],
                 stream: true,
                 temperature: 0.7,
                 max_tokens: 1024,
@@ -329,14 +360,15 @@ async function sendToGroq(transcription) {
         const modelKey = modelToUse.split('/').pop();
 
         const systemPromptChars = (currentSystemPrompt || 'You are a helpful assistant.').length;
-        const historyChars = groqConversationHistory.reduce((sum, msg) => sum + (msg.content || '').length, 0);
+        const history = currentSession ? currentSession.groqHistory : [];
+        const historyChars = history.reduce((sum, msg) => sum + (msg.content || '').length, 0);
         const inputChars = systemPromptChars + historyChars;
         const outputChars = cleanedResponse.length;
 
         incrementCharUsage('groq', modelKey, inputChars + outputChars);
 
         if (cleanedResponse) {
-            groqConversationHistory.push({
+            if (currentSession) currentSession.groqHistory.push({
                 role: 'assistant',
                 content: cleanedResponse,
             });
@@ -365,16 +397,17 @@ async function sendToGeminiText(transcription, appendUser = true) {
     }
 
     const modelToUse = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    console.log(`Sending to Gemini (${modelToUse}):`, transcription.substring(0, 100) + '...');
+    if (isDebug) console.log(`Sending to Gemini (${modelToUse}):`, transcription.substring(0, 100) + '...');
 
+    const history = currentSession ? currentSession.groqHistory : [];
     if (appendUser) {
-        groqConversationHistory.push({
+        history.push({
             role: 'user',
             content: transcription.trim(),
         });
     }
 
-    const trimmedHistory = trimConversationHistoryForGemini(groqConversationHistory, 42000);
+    const trimmedHistory = trimConversationHistoryForGemini(history, 42000);
 
     try {
         const ai = new GoogleGenAI({ apiKey: apiKey });
@@ -416,13 +449,13 @@ async function sendToGeminiText(transcription, appendUser = true) {
         incrementCharUsage('gemini', modelToUse, inputChars + outputChars);
 
         if (fullText.trim()) {
-            groqConversationHistory.push({
+            if (currentSession) currentSession.groqHistory.push({
                 role: 'assistant',
                 content: fullText.trim(),
             });
 
-            if (groqConversationHistory.length > 40) {
-                groqConversationHistory = groqConversationHistory.slice(-40);
+            if (currentSession && currentSession.groqHistory.length > 40) {
+                currentSession.groqHistory = currentSession.groqHistory.slice(-40);
             }
 
             saveConversationTurn(transcription, fullText);
@@ -464,8 +497,9 @@ async function sendToAnswerProvider(transcription) {
             return await sendToGeminiText(transcription);
         } catch (error) {
             sendToRenderer('provider-notification', { type: 'warning', message: 'Gemini unavailable. Switching to hosted fallback.' });
-            const lastMessage = groqConversationHistory.at(-1);
-            if (lastMessage?.role === 'user' && lastMessage.content === transcription.trim()) groqConversationHistory.pop();
+            const history = currentSession ? currentSession.groqHistory : [];
+            const lastMessage = history.at(-1);
+            if (lastMessage?.role === 'user' && lastMessage.content === transcription.trim()) history.pop();
         }
     }
 
@@ -473,8 +507,9 @@ async function sendToAnswerProvider(transcription) {
         return sendToGeminiText(transcription);
     }
 
-    groqConversationHistory.push({ role: 'user', content: transcription.trim() });
-    groqConversationHistory = groqConversationHistory.slice(-20);
+    const history = currentSession ? currentSession.groqHistory : [];
+    history.push({ role: 'user', content: transcription.trim() });
+    if (currentSession) currentSession.groqHistory = history.slice(-20);
     let isFirst = true;
     let fallbackOccurred = false;
     const providerLabel = provider =>
@@ -483,7 +518,7 @@ async function sendToAnswerProvider(transcription) {
     try {
         const result = await streamWithFallback({
             providers: genericProviders,
-            messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...groqConversationHistory],
+            messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...(currentSession ? currentSession.groqHistory : [])],
             onToken: (token, fullText) => {
                 const displayText = stripThinkingTags(fullText);
                 if (!displayText) return;
@@ -506,7 +541,7 @@ async function sendToAnswerProvider(transcription) {
         });
 
         const cleanedResponse = stripThinkingTags(result.text);
-        groqConversationHistory.push({ role: 'assistant', content: cleanedResponse });
+        if (currentSession) currentSession.groqHistory.push({ role: 'assistant', content: cleanedResponse });
         saveConversationTurn(transcription, cleanedResponse);
         console.log(`Answer completed via ${result.provider} (${result.model})`);
         sendToRenderer('update-status', 'Listening...');
@@ -561,107 +596,165 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
     // Initialize new conversation session only on first connect
     if (!isReconnect) {
         initializeNewSession(profile, customPrompt);
+    } else {
+        // On reconnect, create fresh session state but keep history
+        const oldHistory = currentSession ? currentSession.groqHistory : [];
+        currentSession = createSessionState();
+        currentSession.groqHistory = oldHistory;
     }
 
-    try {
-        const session = await client.live.connect({
-            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-            callbacks: {
-                onopen: function () {
-                    sendToRenderer('update-status', 'Live session connected');
-                },
-                onmessage: function (message) {
-                    console.log('----------------', message);
+    // Try model candidates in order until one connects
+    const modelCandidates = getGeminiLiveModelCandidates();
+    let session = null;
+    let lastError = null;
 
-                    // Handle input transcription (what was spoken)
-                    if (message.serverContent?.inputTranscription?.results) {
-                        currentTranscription += formatSpeakerResults(message.serverContent.inputTranscription.results);
-                    } else if (message.serverContent?.inputTranscription?.text) {
-                        const text = message.serverContent.inputTranscription.text;
-                        if (text.trim() !== '') {
-                            currentTranscription += text;
+    for (const model of modelCandidates) {
+        try {
+            session = await client.live.connect({
+                model: model,
+                callbacks: {
+                    onopen: function () {
+                        sendToRenderer('update-status', 'Live session connected');
+                    },
+                    onmessage: function (message) {
+                        if (isDebug) {
+                            console.log('----------------', message);
                         }
-                    }
 
-                    // DISABLED: Gemini's outputTranscription - using Groq for faster responses instead
-                    // if (message.serverContent?.outputTranscription?.text) { ... }
+                        // Handle input transcription (what was spoken)
+                        if (!currentSession) currentSession = createSessionState();
+                        const s = currentSession;
 
-                    if (message.serverContent?.generationComplete) {
-                        if (currentTranscription.trim() !== '') {
-                            sendToAnswerProvider(currentTranscription);
-                            currentTranscription = '';
+                        if (message.serverContent?.inputTranscription?.results) {
+                            s.transcription += formatSpeakerResults(message.serverContent.inputTranscription.results);
+                        } else if (message.serverContent?.inputTranscription?.text) {
+                            const text = message.serverContent.inputTranscription.text;
+                            if (text.trim() !== '') {
+                                s.transcription += text;
+                            }
                         }
-                        messageBuffer = '';
-                    }
 
-                    if (message.serverContent?.turnComplete) {
-                        sendToRenderer('update-status', 'Listening...');
-                    }
-                },
-                onerror: function (e) {
-                    console.log('Session error:', e.message);
-                    sendToRenderer('update-status', 'Error: ' + e.message);
-                },
-                onclose: function (e) {
-                    console.log('Session closed:', e.reason);
+                        // Track timing: whenever input transcription updates, note the time
+                        if (message.serverContent?.inputTranscription) {
+                            s.lastInputTime = Date.now();
+                            if (s.turnStart === 0) {
+                                s.turnStart = Date.now();
+                            }
+                        }
 
-                    // Don't reconnect if user intentionally closed
-                    if (isUserClosing) {
-                        isUserClosing = false;
-                        sendToRenderer('update-status', 'Session closed');
-                        return;
-                    }
+                        // Primary trigger: turnComplete fires when the user's turn is finished
+                        if (message.serverContent?.turnComplete && !s.answerFired) {
+                            s.answerFired = true;
+                            if (s.transcription.trim() !== '') {
+                                if (isDebug) {
+                                    const inputToAnswerMs = Date.now() - (s.lastInputTime || s.turnStart);
+                                    console.log(`[SHADOW_DEBUG] Input complete → answer call: ${inputToAnswerMs}ms`);
+                                }
+                                sendToAnswerProvider(s.transcription);
+                                s.transcription = '';
+                            }
+                            s.messageBuffer = '';
+                            sendToRenderer('update-status', 'Listening...');
+                        }
 
-                    // Attempt reconnection
-                    if (sessionParams && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                        attemptReconnect();
-                    } else {
-                        sendToRenderer('update-status', 'Session closed');
-                    }
-                },
-            },
-            config: {
-                responseModalities: [Modality.AUDIO],
-                proactivity: { proactiveAudio: true },
-                outputAudioTranscription: {},
-                tools: enabledTools,
-                // Enable speaker diarization
-                inputAudioTranscription: {
-                    enableSpeakerDiarization: true,
-                    minSpeakerCount: 2,
-                    maxSpeakerCount: 2,
-                },
-                contextWindowCompression: { slidingWindow: {} },
-                speechConfig: { languageCode: language },
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }],
-                },
-            },
-        });
+                        // Fallback: generationComplete should also trigger if turnComplete was missed
+                        if (message.serverContent?.generationComplete) {
+                            if (!s.answerFired && s.transcription.trim() !== '') {
+                                if (isDebug) {
+                                    console.log('[SHADOW_DEBUG] Generation complete triggered answer (turnComplete was not received or was late)');
+                                }
+                                s.answerFired = true;
+                                sendToAnswerProvider(s.transcription);
+                                s.transcription = '';
+                            }
+                            s.answerFired = false; // Reset for next turn
+                            s.messageBuffer = '';
+                            // Reset timing for next turn
+                            s.turnStart = 0;
+                            s.lastInputTime = 0;
+                        }
+                    },
+                    onerror: function (e) {
+                        console.log('Session error:', e.message);
+                        sendToRenderer('update-status', 'Error: ' + e.message);
+                    },
+                    onclose: function (e) {
+                        console.log('Session closed:', e.reason);
 
+                        // Don't reconnect if user intentionally closed
+                        if (isUserClosing) {
+                            isUserClosing = false;
+                            sendToRenderer('update-status', 'Session closed');
+                            return;
+                        }
+
+                        // Attempt reconnection
+                        if (sessionParams && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                            attemptReconnect();
+                        } else {
+                            sendToRenderer('update-status', 'Session closed');
+                        }
+                    },
+                },
+                config: {
+                    // AUDIO modality removed — we never play back Gemini's spoken reply.
+                    // The actual answer comes from Groq/OpenRouter/etc. for speed.
+                    // Requesting AUDIO caused Gemini to synthesize unused audio before
+                    // signaling generationComplete, which gated the real answer (see audit F-01).
+                    tools: enabledTools,
+                    // Enable speaker diarization
+                    inputAudioTranscription: {
+                        enableSpeakerDiarization: true,
+                        minSpeakerCount: 2,
+                        maxSpeakerCount: 2,
+                    },
+                    contextWindowCompression: { slidingWindow: {} },
+                    speechConfig: { languageCode: language },
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }],
+                    },
+                },
+            });
+            console.log(`Live session connected with model: ${model}`);
+            break;
+        } catch (error) {
+            lastError = error;
+            console.warn(`Failed to connect with Live model "${model}": ${error.message}`);
+            // Try next model candidate
+        }
+    }
+
+    if (session) {
         isInitializingSession = false;
         if (!isReconnect) {
             sendToRenderer('session-initializing', false);
         }
         return session;
-    } catch (error) {
-        console.error('Failed to initialize Gemini session:', error);
-        isInitializingSession = false;
-        if (!isReconnect) {
-            sendToRenderer('session-initializing', false);
-        }
-        return null;
     }
+
+    // All model candidates failed
+    console.error('Failed to initialize Gemini session:', lastError?.message || 'Unknown error');
+    isInitializingSession = false;
+    if (!isReconnect) {
+        sendToRenderer('session-initializing', false);
+    }
+    // Notify user about the model connection failure
+    const attemptedModel = process.env.GEMINI_LIVE_MODEL || GEMINI_LIVE_MODEL_CANDIDATES[0];
+    sendToRenderer('provider-notification', {
+        type: 'warning',
+        message: `Live session failed with model "${attemptedModel}". Verify your API key has access to a compatible Live model, or set GEMINI_LIVE_MODEL in .env.`,
+    });
+    return null;
 }
 
 async function attemptReconnect() {
     reconnectAttempts++;
     console.log(`Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
 
-    // Clear stale buffers
-    messageBuffer = '';
-    currentTranscription = '';
-    // Don't reset groqConversationHistory to preserve context across reconnects
+    // Create fresh session state while preserving conversation history
+    const oldHistory = currentSession ? currentSession.groqHistory : [];
+    currentSession = createSessionState();
+    currentSession.groqHistory = oldHistory;
 
     sendToRenderer('update-status', `Reconnecting... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
@@ -861,7 +954,7 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
     if (!geminiSessionRef.current) return;
 
     try {
-        process.stdout.write('.');
+        if (isDebug) process.stdout.write('.');
         await geminiSessionRef.current.sendRealtimeInput({
             audio: {
                 data: base64Data,
@@ -971,72 +1064,47 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         return success;
     });
 
-    ipcMain.handle('send-audio-content', async (event, { data, mimeType }) => {
-        if (currentProviderMode === 'cloud') {
-            try {
-                const pcmBuffer = Buffer.from(data, 'base64');
-                sendCloudAudio(pcmBuffer);
-                return { success: true };
-            } catch (error) {
-                console.error('Error sending cloud audio:', error);
-                return { success: false, error: error.message };
-            }
-        }
-        if (currentProviderMode === 'local') {
-            try {
-                const pcmBuffer = Buffer.from(data, 'base64');
-                getLocalAi().processLocalAudio(pcmBuffer);
-                return { success: true };
-            } catch (error) {
-                console.error('Error sending local audio:', error);
-                return { success: false, error: error.message };
-            }
-        }
-        if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
+    // Handle audio content — fire-and-forget (ipcRenderer.send) for lower latency
+    ipcMain.on('send-audio-content', (event, { data, mimeType }) => {
         try {
-            process.stdout.write('.');
-            await geminiSessionRef.current.sendRealtimeInput({
-                audio: { data: data, mimeType: mimeType },
-            });
-            return { success: true };
+            const pcmBuffer = Buffer.from(data, 'base64');
+
+            if (currentProviderMode === 'cloud') {
+                sendCloudAudio(pcmBuffer);
+            } else if (currentProviderMode === 'local') {
+                getLocalAi().processLocalAudio(pcmBuffer);
+            } else if (geminiSessionRef.current) {
+                if (isDebug) process.stdout.write('.');
+                geminiSessionRef.current.sendRealtimeInput({
+                    audio: { data: data, mimeType: mimeType },
+                }).catch(err => {
+                    console.error('Error sending system audio:', err);
+                });
+            }
         } catch (error) {
-            console.error('Error sending system audio:', error);
-            return { success: false, error: error.message };
+            console.error('Error processing system audio:', error);
         }
     });
 
     // Handle microphone audio on a separate channel
-    ipcMain.handle('send-mic-audio-content', async (event, { data, mimeType }) => {
-        if (currentProviderMode === 'cloud') {
-            try {
-                const pcmBuffer = Buffer.from(data, 'base64');
-                sendCloudAudio(pcmBuffer);
-                return { success: true };
-            } catch (error) {
-                console.error('Error sending cloud mic audio:', error);
-                return { success: false, error: error.message };
-            }
-        }
-        if (currentProviderMode === 'local') {
-            try {
-                const pcmBuffer = Buffer.from(data, 'base64');
-                getLocalAi().processLocalAudio(pcmBuffer);
-                return { success: true };
-            } catch (error) {
-                console.error('Error sending local mic audio:', error);
-                return { success: false, error: error.message };
-            }
-        }
-        if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
+    ipcMain.on('send-mic-audio-content', (event, { data, mimeType }) => {
         try {
-            process.stdout.write(',');
-            await geminiSessionRef.current.sendRealtimeInput({
-                audio: { data: data, mimeType: mimeType },
-            });
-            return { success: true };
+            const pcmBuffer = Buffer.from(data, 'base64');
+
+            if (currentProviderMode === 'cloud') {
+                sendCloudAudio(pcmBuffer);
+            } else if (currentProviderMode === 'local') {
+                getLocalAi().processLocalAudio(pcmBuffer);
+            } else if (geminiSessionRef.current) {
+                if (isDebug) process.stdout.write(',');
+                geminiSessionRef.current.sendRealtimeInput({
+                    audio: { data: data, mimeType: mimeType },
+                }).catch(err => {
+                    console.error('Error sending mic audio:', err);
+                });
+            }
         } catch (error) {
-            console.error('Error sending mic audio:', error);
-            return { success: false, error: error.message };
+            console.error('Error processing mic audio:', error);
         }
     });
 
@@ -1054,7 +1122,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: false, error: 'Image buffer too small' };
             }
 
-            process.stdout.write('!');
+            if (isDebug) process.stdout.write('!');
 
             if (currentProviderMode === 'cloud') {
                 const sent = sendCloudImage(data);
@@ -1107,7 +1175,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
 
         try {
-            console.log('Sending text message:', text);
+            if (isDebug) console.log('Sending text message:', text);
 
             sendToAnswerProvider(text.trim());
 

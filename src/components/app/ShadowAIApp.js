@@ -729,9 +729,10 @@ export class ShadowAIApp extends LitElement {
     }
 
     providerOptionLabel(provider) {
-        const labels = { groq: 'Groq', openrouter: 'OpenRouter', openai: 'OpenAI', perplexity: 'Perplexity', nvidia: 'NVIDIA', gemini: 'Gemini' };
+        const labels = this._providerStatus.providerLabels || {};
         const status = this._providerStatus.providers?.[provider];
-        return `${labels[provider]} — ${status?.message || 'Checking'}`;
+        const label = labels[provider] || provider;
+        return `${label} — ${status?.message || 'Checking'}`;
     }
 
     selectedProviderStatus() {
@@ -1207,7 +1208,7 @@ export class ShadowAIApp extends LitElement {
         }
 
         const isLive = this._isLiveMode();
-        const providerIds = ['groq', 'openrouter', 'openai', 'perplexity', 'nvidia', 'gemini'];
+        const providerIds = this._providerStatus.providerIds || [];
         const selectedProviderStatus = this.selectedProviderStatus();
         const providerStatusClass =
             selectedProviderStatus.state === 'disabled' ? 'disabled' : ['enabled', 'active'].includes(selectedProviderStatus.state) ? 'ok' : 'error';

@@ -1,6 +1,7 @@
 const { Ollama } = require('ollama');
 const { getSystemPrompt } = require('./prompts');
 const { sendToRenderer, initializeNewSession, saveConversationTurn } = require('./gemini');
+const { initializeSileroVAD, VadProcessor, isAvailable, FRAME_SIZE } = require('./sileroVad');
 
 // ── State ──
 
@@ -18,12 +19,21 @@ let speechBuffers = [];
 let silenceFrameCount = 0;
 let speechFrameCount = 0;
 
+// Silero VAD processor (initialized lazily when local mode starts)
+let sileroVad = null;
+
+// Rolling-window transcription state
+let rollingTranscriptionInterval = null;
+const ROLLING_WINDOW_MS = 2000; // Transcribe partial audio every 2s during speech
+let lastRollingTranscriptionTime = 0;
+
 // VAD configuration
+// Silence frames reduced from 15→5 (500ms vs 1500ms) now that Silero VAD provides robust detection
 const VAD_MODES = {
-    NORMAL: { energyThreshold: 0.01, speechFramesRequired: 3, silenceFramesRequired: 30 },
-    LOW_BITRATE: { energyThreshold: 0.008, speechFramesRequired: 4, silenceFramesRequired: 35 },
-    AGGRESSIVE: { energyThreshold: 0.015, speechFramesRequired: 2, silenceFramesRequired: 20 },
-    VERY_AGGRESSIVE: { energyThreshold: 0.02, speechFramesRequired: 2, silenceFramesRequired: 15 },
+    NORMAL: { energyThreshold: 0.01, speechFramesRequired: 3, silenceFramesRequired: 10 },
+    LOW_BITRATE: { energyThreshold: 0.008, speechFramesRequired: 4, silenceFramesRequired: 12 },
+    AGGRESSIVE: { energyThreshold: 0.015, speechFramesRequired: 2, silenceFramesRequired: 7 },
+    VERY_AGGRESSIVE: { energyThreshold: 0.02, speechFramesRequired: 2, silenceFramesRequired: 5 },
 };
 let vadConfig = VAD_MODES.VERY_AGGRESSIVE;
 
@@ -60,7 +70,7 @@ function resample24kTo16k(inputBuffer) {
     return outputBuffer;
 }
 
-// ── VAD (Voice Activity Detection) ──
+// ── VAD (Voice Activity Detection) — Two-stage: RMS pre-filter + Silero VAD ──
 
 function calculateRMS(pcm16Buffer) {
     const samples = pcm16Buffer.length / 2;
@@ -73,9 +83,40 @@ function calculateRMS(pcm16Buffer) {
     return Math.sqrt(sumSquares / samples);
 }
 
-function processVAD(pcm16kBuffer) {
+/**
+ * Convert a PCM16 buffer to Float32Array for the Silero VAD model.
+ * Reuses pcm16ToFloat32() to avoid duplicating the conversion logic.
+ * The result is used for frame-based processing (512-sample frames at 16kHz).
+ */
+function pcm16ToFloat32Frames(pcm16Buffer) {
+    return pcm16ToFloat32(pcm16Buffer);
+}
+
+async function processVAD(pcm16kBuffer) {
     const rms = calculateRMS(pcm16kBuffer);
-    const isVoice = rms > vadConfig.energyThreshold;
+
+    // Stage 1: RMS pre-filter — skip expensive Silero inference on obvious silence
+    const isLoud = rms > vadConfig.energyThreshold;
+
+    // Stage 2: If Silero VAD is available, use it for robust classification
+    let isVoice = isLoud;
+    if (sileroVad && isLoud) {
+        // Process audio through Silero VAD in 512-sample frames (32ms at 16kHz)
+        const float32Audio = pcm16ToFloat32Frames(pcm16kBuffer);
+        const numFrames = Math.floor(float32Audio.length / FRAME_SIZE);
+        let speechFrameCountSilero = 0;
+        const totalFrames = Math.max(1, numFrames);
+
+        for (let f = 0; f < numFrames; f++) {
+            const start = f * FRAME_SIZE;
+            const frame = float32Audio.slice(start, start + FRAME_SIZE);
+            const prob = await sileroVad.processFrame(frame);
+            if (prob > 0.5) speechFrameCountSilero++;
+        }
+
+        // Consider speech detected if majority of frames are speech
+        isVoice = speechFrameCountSilero / totalFrames > 0.3;
+    }
 
     if (isVoice) {
         speechFrameCount++;
@@ -84,8 +125,13 @@ function processVAD(pcm16kBuffer) {
         if (!isSpeaking && speechFrameCount >= vadConfig.speechFramesRequired) {
             isSpeaking = true;
             speechBuffers = [];
-            console.log('[LocalAI] Speech started (RMS:', rms.toFixed(4), ')');
+            lastRollingTranscriptionTime = Date.now();
+            console.log('[LocalAI] Speech started (RMS:', rms.toFixed(4),
+                sileroVad ? ', Silero prob:', sileroVad.getProbability().toFixed(4) : '');
             sendToRenderer('update-status', 'Listening... (speech detected)');
+
+            // Start rolling-window transcription timer during speech
+            startRollingTranscription();
         }
     } else {
         silenceFrameCount++;
@@ -93,13 +139,14 @@ function processVAD(pcm16kBuffer) {
 
         if (isSpeaking && silenceFrameCount >= vadConfig.silenceFramesRequired) {
             isSpeaking = false;
+            stopRollingTranscription();
             console.log('[LocalAI] Speech ended, accumulated', speechBuffers.length, 'chunks');
             sendToRenderer('update-status', 'Transcribing...');
 
-            // Trigger transcription with accumulated audio
+            // Trigger final transcription with accumulated audio
             const audioData = Buffer.concat(speechBuffers);
             speechBuffers = [];
-            handleSpeechEnd(audioData);
+            await handleSpeechEnd(audioData);
             return;
         }
     }
@@ -107,6 +154,47 @@ function processVAD(pcm16kBuffer) {
     // Accumulate audio during speech
     if (isSpeaking) {
         speechBuffers.push(Buffer.from(pcm16kBuffer));
+    }
+}
+
+// ── Rolling-Window Transcription ──
+
+function startRollingTranscription() {
+    // Clear any existing interval
+    stopRollingTranscription();
+
+    // Check audio every ROLLING_WINDOW_MS during active speech
+    rollingTranscriptionInterval = setInterval(async () => {
+        if (!isSpeaking || speechBuffers.length === 0) return;
+
+        const now = Date.now();
+        if (now - lastRollingTranscriptionTime < ROLLING_WINDOW_MS) return;
+        lastRollingTranscriptionTime = now;
+
+        // Concatenate audio accumulated so far
+        const audioSoFar = Buffer.concat(speechBuffers);
+        if (audioSoFar.length < 32000) return; // Need at least ~1s of audio
+
+        try {
+            const partialText = await transcribeAudio(audioSoFar);
+            if (partialText && partialText.trim().length > 2) {
+                // Send interim partial transcript to renderer
+                // The renderer can display this as muted/greyed text
+                sendToRenderer('interim-transcription', {
+                    text: partialText,
+                    isFinal: false,
+                });
+            }
+        } catch (err) {
+            // Rolling transcription is best-effort; ignore errors silently
+        }
+    }, ROLLING_WINDOW_MS);
+}
+
+function stopRollingTranscription() {
+    if (rollingTranscriptionInterval) {
+        clearInterval(rollingTranscriptionInterval);
+        rollingTranscriptionInterval = null;
     }
 }
 
@@ -128,11 +216,29 @@ async function loadWhisperPipeline(modelName) {
         const { app } = require('electron');
         const path = require('path');
         env.cacheDir = path.join(app.getPath('userData'), 'whisper-models');
-        whisperPipeline = await pipeline('automatic-speech-recognition', modelName, {
-            dtype: 'q8',
-            device: 'auto',
-        });
-        console.log('[LocalAI] Whisper model loaded successfully');
+
+        // Attempt WebGPU backend first; fall back to CPU if unavailable
+        // This is explicitly tried and logged so the user knows which backend is in use
+        let device = 'auto';
+        try {
+            console.log('[LocalAI] Attempting WebGPU backend for Whisper...');
+            whisperPipeline = await pipeline('automatic-speech-recognition', modelName, {
+                dtype: 'q8',
+                device: 'webgpu',
+            });
+            device = 'webgpu';
+            console.log('[LocalAI] Whisper loaded with WebGPU backend');
+        } catch (webgpuError) {
+            console.warn('[LocalAI] WebGPU backend unavailable, falling back to CPU:', webgpuError.message);
+            whisperPipeline = await pipeline('automatic-speech-recognition', modelName, {
+                dtype: 'q8',
+                device: 'cpu',
+            });
+            device = 'cpu';
+            console.log('[LocalAI] Whisper loaded with CPU backend');
+        }
+
+        console.log('[LocalAI] Whisper model loaded successfully (backend:', device, ')');
         sendToRenderer('whisper-downloading', false);
         isWhisperLoading = false;
         return whisperPipeline;
@@ -192,6 +298,14 @@ async function handleSpeechEnd(audioData) {
     }
 
     const transcription = await transcribeAudio(audioData);
+
+    // Send final transcription to renderer (replacing any interim partial text)
+    if (transcription && transcription.trim().length > 0) {
+        sendToRenderer('interim-transcription', {
+            text: transcription.trim(),
+            isFinal: true,
+        });
+    }
 
     if (!transcription || transcription.trim() === '' || transcription.trim().length < 2) {
         console.log('[LocalAI] Empty transcription, skipping');
@@ -294,6 +408,21 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
             return false;
         }
 
+        // Initialize Silero VAD (non-blocking — will fall through if unavailable)
+        try {
+            await initializeSileroVAD();
+            if (isAvailable()) {
+                sileroVad = new VadProcessor();
+                console.log('[LocalAI] Silero VAD initialized successfully');
+            } else {
+                console.warn('[LocalAI] Silero VAD unavailable; falling back to RMS-only VAD');
+                sileroVad = null;
+            }
+        } catch (vadError) {
+            console.warn('[LocalAI] Silero VAD init failed:', vadError.message, '— using RMS-only VAD');
+            sileroVad = null;
+        }
+
         // Reset VAD state
         isSpeaking = false;
         speechBuffers = [];
@@ -301,6 +430,13 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
         speechFrameCount = 0;
         resampleRemainder = Buffer.alloc(0);
         localConversationHistory = [];
+        lastRollingTranscriptionTime = 0;
+        stopRollingTranscription();
+
+        // Reset Silero VAD processor state
+        if (sileroVad) {
+            sileroVad.reset();
+        }
 
         // Initialize conversation session
         initializeNewSession(profile, customPrompt);
@@ -325,7 +461,10 @@ function processLocalAudio(monoChunk24k) {
     // Resample from 24kHz to 16kHz
     const pcm16k = resample24kTo16k(monoChunk24k);
     if (pcm16k.length > 0) {
-        processVAD(pcm16k);
+        // processVAD is now async (due to Silero VAD inference)
+        processVAD(pcm16k).catch(err => {
+            console.error('[LocalAI] VAD processing error:', err.message);
+        });
     }
 }
 
@@ -341,6 +480,9 @@ function closeLocalSession() {
     ollamaClient = null;
     ollamaModel = null;
     currentSystemPrompt = null;
+    sileroVad = null;
+    lastRollingTranscriptionTime = 0;
+    stopRollingTranscription();
     // Note: whisperPipeline is kept loaded to avoid reloading on next session
 }
 
