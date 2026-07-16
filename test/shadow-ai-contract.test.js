@@ -247,3 +247,19 @@ test('local VAD silence timeout is persisted and exposed in Settings', () => {
     assert.match(settingsSource, /updatePreference\('vadSilenceMs'/);
     assert.match(indexSource, /setVadSilenceMs\(value\)/);
 });
+
+test('custom skills are persisted prompt instructions with complete CRUD UI', () => {
+    const registrySource = fs.readFileSync(path.join(root, 'src/skills/skillRegistry.js'), 'utf8');
+    const viewSource = fs.readFileSync(path.join(root, 'src/components/views/AICustomizeView.js'), 'utf8');
+    const indexSource = fs.readFileSync(path.join(root, 'src/index.js'), 'utf8');
+
+    assert.match(registrySource, /getPreferences\(\)\.promptSkills/);
+    assert.match(registrySource, /if \(skill\.enabled\) fragments\.push/);
+    assert.match(viewSource, />Add skill</);
+    assert.match(viewSource, />Edit \/ rename</);
+    assert.match(viewSource, />Delete</);
+    assert.match(viewSource, /Prompt instructions/);
+    assert.match(indexSource, /skills:create/);
+    assert.match(indexSource, /skills:update/);
+    assert.match(indexSource, /skills:delete/);
+});

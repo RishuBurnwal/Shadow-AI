@@ -470,5 +470,6 @@ module.exports = {
     extractFactsFromSession,
     updateMemoryEntry,
     deleteMemoryEntry,
+    getRelevantFacts,
     getProfileForDisplay,
 };

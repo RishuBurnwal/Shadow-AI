@@ -29,7 +29,7 @@ Non-engineering release gate: **C-00 remains unresolved**. Distribution must con
 | A-01 | Fixed               | Reconnect creates one fresh turn state, preserves history, and returns immediately after success.                                                                          |
 | A-02 | Fixed               | RMS is documented as a gate for Silero; VAD timeout has one persisted setting.                                                                                             |
 | A-03 | Fixed pragmatically | Launcher readiness timeout increased from 12 to 60 seconds and a live launcher smoke passed.                                                                               |
-| A-04 | Improved            | 72 unit/contract tests and 20 Electron e2e tests pass. Coverage executes successfully at 36.6%; broader behavioral coverage remains future work.                           |
+| A-04 | Improved            | 82 unit/contract tests and 21 Electron e2e tests pass. Line coverage is 47.95%, branch coverage 70.56%, and function coverage 61.35%.                                      |
 
 ## Verification evidence
 
@@ -56,11 +56,11 @@ Non-engineering release gate: **C-00 remains unresolved**. Distribution must con
 ### Not broken, but not live-tested against external services
 
 - Gemini Live, Groq, OpenRouter, OpenAI, Perplexity, NVIDIA, and Ollama were not called with real user credentials during this audit. Their routing, validation, fallback, and model-discovery paths are covered by contract/mocked tests. Ollama was not running locally.
-- Microphone and system-loopback capture require user hardware and OS permissions. Audio processing, IPC, worklet chunking, native resampling selection, VAD, and real Whisper inference were independently exercised.
+- Windows physical microphone and system-loopback capture were exercised through Electron with real endpoints and non-zero PCM signal. Audio processing, IPC, worklet chunking, native resampling selection, VAD, and real Whisper inference were also exercised.
 
 ### Remaining maintenance, not release-breaking
 
-- Overall line coverage is 36.6%; core provider routing is substantially higher, while UI orchestration and external-service branches remain comparatively thin.
+- Overall line coverage is 47.95%; persistence, prompts, skills, provider routing, and configuration are strongly covered, while external-service orchestration remains comparatively thin.
 - The full development dependency audit still reports issues in packaging tooling, but `npm audit --omit=dev` is clean and the packaged runtime completed successfully.
 - Repository-wide Prettier still reports the three supplied audit documents plus pre-existing `AICustomizeView.js` and `MainView.js`; all files changed by this work are formatted.
 - Ponytail audit identified `src/assets/lit-all-2.7.4.min.js` and the stale `src/components/index.js` barrel as possible deletions. They were not removed because neither affected correctness and unrelated deletion would enlarge this release diff.

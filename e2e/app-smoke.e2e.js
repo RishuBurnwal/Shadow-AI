@@ -205,6 +205,29 @@ test.describe('Shadow AI', () => {
         expect(name).toBe('dark');
     });
 
+    test('prompt skills can be added, renamed, toggled and deleted through IPC', async () => {
+        const created = await win.evaluate(async () =>
+            window.shadowAI.storage.createPromptSkill({ name: 'Brief', description: 'Short replies', prompt: 'Answer in one sentence.' })
+        );
+        expect(created.success).toBe(true);
+
+        let skills = await win.evaluate(async () => window.shadowAI.storage.getPromptSkills());
+        expect(skills).toHaveLength(1);
+        const id = skills[0].id;
+
+        const updated = await win.evaluate(
+            async skillId => window.shadowAI.storage.updatePromptSkill(skillId, { name: 'Very brief', enabled: false }),
+            id
+        );
+        expect(updated.success).toBe(true);
+        skills = await win.evaluate(async () => window.shadowAI.storage.getPromptSkills());
+        expect(skills[0]).toMatchObject({ id, name: 'Very brief', enabled: false });
+
+        const removed = await win.evaluate(async skillId => window.shadowAI.storage.deletePromptSkill(skillId), id);
+        expect(removed.success).toBe(true);
+        expect(await win.evaluate(async () => window.shadowAI.storage.getPromptSkills())).toEqual([]);
+    });
+
     test('navigate changes currentView', async () => {
         await win.evaluate(() => document.querySelector('shadow-ai-app')?.navigate?.('help'));
         await win.waitForTimeout(300);

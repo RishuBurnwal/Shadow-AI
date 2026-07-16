@@ -34,6 +34,15 @@ function getSkillPromptFragments(profile, enabledSkills = null) {
             if (text) fragments.push(text);
         }
     }
+    try {
+        const { getPreferences } = require('../storage');
+        const { normalizeSkills } = require('./promptSkills');
+        for (const skill of normalizeSkills(getPreferences().promptSkills)) {
+            if (skill.enabled) fragments.push(`\n\n**${skill.name.toUpperCase()} SKILL:**\n${skill.prompt}`);
+        }
+    } catch {
+        // A corrupt optional skill must never prevent the assistant from starting.
+    }
     return fragments;
 }
 

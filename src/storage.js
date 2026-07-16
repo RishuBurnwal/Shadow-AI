@@ -47,6 +47,7 @@ const DEFAULT_PREFERENCES = {
     whisperModel: 'Xenova/whisper-small',
     vadSilenceMs: 500,
     privacyMode: false,
+    promptSkills: [],
 };
 
 function normalizeLanguageCode(value) {

@@ -173,6 +173,9 @@ export class AICustomizeView extends LitElement {
         _skills: { state: true },
         _syncing: { state: true },
         _syncResult: { state: true },
+        _promptSkills: { state: true },
+        _editingSkill: { state: true },
+        _skillError: { state: true },
     };
 
     constructor() {
@@ -185,6 +188,9 @@ export class AICustomizeView extends LitElement {
         this._syncing = false;
         this._syncResult = null;
         this._profileLoaded = false;
+        this._promptSkills = [];
+        this._editingSkill = null;
+        this._skillError = '';
         this._saveTimer = null;
         this._loadFromStorage();
     }
@@ -198,6 +204,7 @@ export class AICustomizeView extends LitElement {
         try {
             const prefs = await shadowAI.storage.getPreferences();
             this._context = prefs.customPrompt || '';
+            this._promptSkills = await shadowAI.storage.getPromptSkills();
 
             // Load skills
             if (shadowAI.storage.getPreferences) {
@@ -300,6 +307,41 @@ export class AICustomizeView extends LitElement {
         return this._skills.includes(skillId);
     }
 
+    _newPromptSkill() {
+        this._editingSkill = { id: '', name: '', description: '', prompt: '', enabled: true };
+        this._skillError = '';
+    }
+
+    _editPromptSkill(skill) {
+        this._editingSkill = { ...skill };
+        this._skillError = '';
+    }
+
+    async _savePromptSkill() {
+        const draft = this._editingSkill;
+        if (!draft) return;
+        const result = draft.id ? await shadowAI.storage.updatePromptSkill(draft.id, draft) : await shadowAI.storage.createPromptSkill(draft);
+        if (!result.success) {
+            this._skillError = result.error || 'Could not save skill.';
+            return;
+        }
+        this._promptSkills = await shadowAI.storage.getPromptSkills();
+        this._editingSkill = null;
+        this._skillError = '';
+    }
+
+    async _togglePromptSkill(skill) {
+        await shadowAI.storage.updatePromptSkill(skill.id, { enabled: !skill.enabled });
+        this._promptSkills = await shadowAI.storage.getPromptSkills();
+    }
+
+    async _deletePromptSkill(skill) {
+        if (!window.confirm(`Delete skill "${skill.name}"?`)) return;
+        await shadowAI.storage.deletePromptSkill(skill.id);
+        this._promptSkills = await shadowAI.storage.getPromptSkills();
+        if (this._editingSkill?.id === skill.id) this._editingSkill = null;
+    }
+
     async _handleResumeSync() {
         if (this._syncing || !this._resumeText?.trim()) return;
         this._syncing = true;
@@ -366,6 +408,76 @@ export class AICustomizeView extends LitElement {
                 <div class="form-help" style="margin-top:var(--space-sm);">
                     Skills marked "auto" activate automatically for your current profile. Uncheck to disable.
                 </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:var(--space-lg);">
+                    <div>
+                        <div class="form-label">Prompt skills</div>
+                        <div class="form-help">Create reusable instructions that are injected into every AI request while enabled.</div>
+                    </div>
+                    <button class="btn-secondary" @click=${this._newPromptSkill}>Add skill</button>
+                </div>
+                ${this._promptSkills.map(
+                    skill => html`
+                        <div
+                            class="skill-row"
+                            style="display:flex;gap:var(--space-sm);align-items:center;padding:var(--space-sm) 0;border-bottom:1px solid var(--border);"
+                        >
+                            <input
+                                type="checkbox"
+                                ?checked=${skill.enabled}
+                                @change=${() => this._togglePromptSkill(skill)}
+                                aria-label="Enable ${skill.name}"
+                            />
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:500;color:var(--text-primary);">${skill.name}</div>
+                                <div class="form-help">${skill.description || skill.prompt.slice(0, 100)}</div>
+                            </div>
+                            <button class="btn-secondary" @click=${() => this._editPromptSkill(skill)}>Edit / rename</button>
+                            <button class="btn-danger" @click=${() => this._deletePromptSkill(skill)}>Delete</button>
+                        </div>
+                    `
+                )}
+                ${this._promptSkills.length === 0 ? html`<div class="form-help" style="margin-top:var(--space-sm);">No custom prompt skills yet.</div>` : ''}
+                ${
+                    this._editingSkill
+                        ? html`
+                              <div class="surface" style="margin-top:var(--space-md);padding:var(--space-md);">
+                                  <label class="form-group">
+                                      <span class="form-label">Skill name</span>
+                                      <input
+                                          class="control"
+                                          maxlength="80"
+                                          .value=${this._editingSkill.name}
+                                          @input=${e => (this._editingSkill = { ...this._editingSkill, name: e.target.value })}
+                                      />
+                                  </label>
+                                  <label class="form-group">
+                                      <span class="form-label">Description</span>
+                                      <input
+                                          class="control"
+                                          maxlength="240"
+                                          .value=${this._editingSkill.description}
+                                          @input=${e => (this._editingSkill = { ...this._editingSkill, description: e.target.value })}
+                                      />
+                                  </label>
+                                  <label class="form-group vertical" style="min-height:180px;">
+                                      <span class="form-label">Prompt instructions</span>
+                                      <textarea
+                                          class="control"
+                                          maxlength="12000"
+                                          placeholder="Tell the assistant exactly how to behave..."
+                                          .value=${this._editingSkill.prompt}
+                                          @input=${e => (this._editingSkill = { ...this._editingSkill, prompt: e.target.value })}
+                                      ></textarea>
+                                  </label>
+                                  ${this._skillError ? html`<div style="color:var(--danger,#ef4444);">${this._skillError}</div>` : ''}
+                                  <div class="profile-actions">
+                                      <button class="btn-secondary" @click=${this._savePromptSkill}>Save skill</button>
+                                      <button class="btn-secondary" @click=${() => (this._editingSkill = null)}>Cancel</button>
+                                  </div>
+                              </div>
+                          `
+                        : ''
+                }
             </div>
         `;
     }
@@ -568,19 +680,19 @@ export class AICustomizeView extends LitElement {
                                           ${this._syncing ? 'Extracting...' : 'Sync from Resume'}
                                       </button>
                                       ${
-                                      this._syncResult?.type === 'success'
-                                          ? html`<span style="font-size:var(--font-size-xs);color:var(--success, #4caf50);"
-                                                >Profile fields updated. Review above.</span
-                                            >`
-                                          : ''
-                                  }
+                                          this._syncResult?.type === 'success'
+                                              ? html`<span style="font-size:var(--font-size-xs);color:var(--success, #4caf50);"
+                                                    >Profile fields updated. Review above.</span
+                                                >`
+                                              : ''
+                                      }
                                       ${
-                                      this._syncResult?.type === 'error'
-                                          ? html`<span style="font-size:var(--font-size-xs);color:var(--danger, #ef4444);"
-                                                >${this._syncResult.message}</span
-                                            >`
-                                          : ''
-                                  }
+                                          this._syncResult?.type === 'error'
+                                              ? html`<span style="font-size:var(--font-size-xs);color:var(--danger, #ef4444);"
+                                                    >${this._syncResult.message}</span
+                                                >`
+                                              : ''
+                                      }
                                   </div>
                               `
                             : ''

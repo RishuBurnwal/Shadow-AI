@@ -14,7 +14,8 @@
         "build:assets": "esbuild node_modules/lit/index.js --bundle --format=esm --outfile=src/assets/lit-core-2.7.4.min.js --minify && esbuild node_modules/highlight.js/lib/index.js --bundle --format=iife --global-name=hljs --outfile=src/assets/highlight-11.9.0.min.js --minify && cp node_modules/marked/lib/marked.umd.js src/assets/marked-4.3.0.min.js && cp node_modules/highlight.js/styles/vs2015.min.css src/assets/highlight-vscode-dark.min.css",
         "lint": "prettier --check .",
         "lint:fix": "prettier --write .",
-        "test:e2e": "npx playwright test"
+        "test:e2e": "npx playwright test",
+        "test:audio-devices": "node scripts/audio-device-smoke.js"
     },
     "keywords": [
         "shadow ai",

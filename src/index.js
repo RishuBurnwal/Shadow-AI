@@ -349,6 +349,37 @@ function setupStorageIpcHandlers() {
     });
 
     // ============ SKILLS ============
+    const promptSkills = require('./skills/promptSkills');
+    const savePromptSkills = skills => {
+        if (!storage.updatePreference('promptSkills', skills)) throw new Error('Could not save skills.');
+    };
+    ipcMain.handle('skills:list', async () => ({ success: true, data: promptSkills.normalizeSkills(storage.getPreferences().promptSkills) }));
+    ipcMain.handle('skills:create', async (event, input) => {
+        try {
+            const result = promptSkills.createSkill(storage.getPreferences().promptSkills, input);
+            savePromptSkills(result.skills);
+            return { success: true, data: result.skill };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+    ipcMain.handle('skills:update', async (event, id, updates) => {
+        try {
+            const result = promptSkills.updateSkill(storage.getPreferences().promptSkills, String(id || ''), updates);
+            savePromptSkills(result.skills);
+            return { success: true, data: result.skill };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+    ipcMain.handle('skills:delete', async (event, id) => {
+        try {
+            savePromptSkills(promptSkills.deleteSkill(storage.getPreferences().promptSkills, String(id || '')));
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
     ipcMain.handle('skills:resume-sync', async (event, resumeText) => {
         try {
             // One-time disclosure: resume text is sent to the configured AI provider for extraction

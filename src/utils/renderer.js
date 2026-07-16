@@ -121,6 +121,19 @@ const storage = {
     async resumeSync(resumeText) {
         return ipcRenderer.invoke('skills:resume-sync', resumeText);
     },
+    async getPromptSkills() {
+        const result = await ipcRenderer.invoke('skills:list');
+        return result.success ? result.data : [];
+    },
+    async createPromptSkill(skill) {
+        return ipcRenderer.invoke('skills:create', skill);
+    },
+    async updatePromptSkill(id, updates) {
+        return ipcRenderer.invoke('skills:update', id, updates);
+    },
+    async deletePromptSkill(id) {
+        return ipcRenderer.invoke('skills:delete', id);
+    },
 
     // Profile (Soul)
     async getProfile() {

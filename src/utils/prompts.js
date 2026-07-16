@@ -278,3 +278,5 @@ function getSystemPrompt(profile, customPrompt = '', googleSearchEnabled = true,
     const promptParts = profilePrompts[profile] || profilePrompts.interview;
     return buildSystemPrompt(promptParts, customPrompt, googleSearchEnabled, profile, enabledSkills);
 }
+
+module.exports = { buildSystemPrompt, getSystemPrompt };

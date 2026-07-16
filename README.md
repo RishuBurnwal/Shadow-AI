@@ -21,13 +21,14 @@ Use a single `Shadow-AI` checkout as the canonical workspace. The launcher, upda
 
 ## Current completion status
 
-| Measure                    | Completion | Meaning                                                                                                                             |
-| -------------------------- | ---------: | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Original engineering audit |   **100%** | All 17 F/S/A engineering findings from `01_AUDIT_REPORT.md` are implemented or verified.                                            |
-| Fixing plan                |   **100%** | All 12 implementation items from `02_FIXING_PLAN_AND_PROMPT.md` are complete.                                                       |
-| Production readiness       |    **88%** | Windows build, launch, security, local STT, tests, and packaging pass; external-service and cross-platform live validation remains. |
+| Measure                      | Completion | Meaning                                                                                                                             |
+| ---------------------------- | ---------: | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Original engineering audit   |   **100%** | All 17 F/S/A engineering findings from `01_AUDIT_REPORT.md` are implemented or verified.                                            |
+| Fixing plan                  |   **100%** | All 12 implementation items from `02_FIXING_PLAN_AND_PROMPT.md` are complete.                                                       |
+| Windows feature readiness    |   **100%** | Build, launch, security, local STT, physical microphone, system loopback, tests, packaging, and editable prompt skills pass.        |
+| Overall production readiness |    **93%** | Windows is release-tested; authenticated hosted-provider, GPL release governance, and macOS/Linux validation remain external gates. |
 
-The remaining 12% is validation and release governance, not a known broken core module. The GPL-3.0 distribution decision is external to engineering and must be resolved before treating a paid/closed-source release as ready.
+The remaining 7% is external validation and release governance, not a known broken Windows module. It cannot honestly be called 100% for every production environment until the hosted accounts, GPL distribution decision, and macOS/Linux release matrix are verified.
 
 ### Audit checklist
 
@@ -55,7 +56,7 @@ The remaining 12% is validation and release governance, not a known broken core 
 - [x] **A-01:** Reconnect resets turn state, preserves history, and stops retrying after success.
 - [x] **A-02:** RMS is explicitly the gate for Silero VAD and silence timing has one persisted user setting.
 - [x] **A-03:** Launcher readiness allows 60 seconds for slower first-run startup and passes a live Windows launch smoke.
-- [x] **A-04:** 72 unit/contract tests and 20 Electron end-to-end tests pass; coverage measurement runs successfully.
+- [x] **A-04:** 82 unit/contract tests and 21 Electron end-to-end tests pass; line coverage improved from 36.6% to 47.95%.
 
 ### Verified release gates
 
@@ -67,15 +68,19 @@ The remaining 12% is validation and release governance, not a known broken core 
 - [x] A real pinned Whisper Tiny CPU model exactly transcribed: `The quick brown fox jumps over the lazy dog.`
 - [x] Two overlapping real Whisper inferences returned the same exact transcript.
 - [x] The source tree contains no detected committed API key/private-key pattern.
+- [x] Physical `Microphone Array` produces live PCM samples through Electron (`peak > 0`).
+- [x] Realtek speaker system loopback captures a generated 440 Hz test signal (`peak > 0`).
+- [x] Prompt skills support add, edit, rename, enable/disable, and delete; enabled prompts are injected into AI requests.
+- [x] Relevant memory facts and system-prompt exports are connected and behavior-tested.
 
 ### Remaining checklist and known limitations
 
 - [ ] **GPL/commercial release decision:** keep GPL-3.0 source and attribution available to recipients, or obtain a written relicensing agreement. This is not a code fix.
 - [ ] **Hosted-provider live matrix:** run authenticated end-to-end calls against Gemini Live, Groq, OpenRouter, OpenAI, Perplexity, and NVIDIA. Routing and failure behavior are tested without using real secrets, but current live accounts, quotas, and model access were not exercised in the release audit.
 - [ ] **Ollama response integration:** start a local Ollama server, pull the configured model, and verify transcriptionâ†’first-tokenâ†’completed-answer on the target machine. Ollama was not running during the audit.
-- [ ] **Physical audio matrix:** verify microphone and system-loopback capture with real devices and OS permission prompts. Worklet chunking, IPC, VAD, resampling selection, and Whisper inference were tested independently.
+- [x] **Windows physical audio matrix:** microphone and system-loopback streams were opened through Electron and produced live PCM signal. Repeat with `npm run test:audio-devices`.
 - [ ] **macOS and Linux release matrix:** Windows is verified; macOS `SystemAudioDump`, Linux audio capture, packaging, signing, and permissions require platform-specific runs.
-- [ ] **Coverage expansion:** overall line coverage is 36.6%. Provider routing is substantially better covered, while UI orchestration, external services, and device-error branches need more behavioral tests.
+- [x] **Coverage expansion:** meaningful persistence, prompt, memory, skill, history, limits, and CRUD tests raised line coverage from 36.6% to 47.95%, branch coverage to 70.56%, and function coverage to 61.35%. External-service failure branches remain the next coverage target.
 - [ ] **Development dependency audit:** the packaged production dependency tree is clean, but npm still reports issues in development/packaging tools. Monitor Forge and transitive dependency updates.
 - [ ] **Codebase cleanup:** `src/assets/lit-all-2.7.4.min.js` and the stale `src/components/index.js` barrel may be removable after confirming no external consumer relies on them.
 - [ ] **Repository-wide formatting debt:** the supplied audit documents plus pre-existing `AICustomizeView.js` and `MainView.js` remain outside a clean whole-repository Prettier pass. Files changed for the audit are formatted.
