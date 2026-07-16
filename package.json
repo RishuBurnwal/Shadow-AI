@@ -11,6 +11,7 @@
         "package": "electron-forge package",
         "make": "electron-forge make",
         "publish": "electron-forge publish",
+        "build:assets": "esbuild node_modules/lit/index.js --bundle --format=esm --outfile=src/assets/lit-core-2.7.4.min.js --minify && esbuild node_modules/highlight.js/lib/index.js --bundle --format=iife --global-name=hljs --outfile=src/assets/highlight-11.9.0.min.js --minify && cp node_modules/marked/lib/marked.umd.js src/assets/marked-4.3.0.min.js && cp node_modules/highlight.js/styles/vs2015.min.css src/assets/highlight-vscode-dark.min.css",
         "lint": "prettier --check .",
         "lint:fix": "prettier --write .",
         "test:e2e": "npx playwright test"
@@ -47,6 +48,9 @@
         "@playwright/test": "^1.61.1",
         "@reforged/maker-appimage": "^5.0.0",
         "@reticlehq/react": "^2.0.0",
-        "electron": "^30.0.5"
+        "electron": "^30.0.5",
+        "highlight.js": "^11.9.0",
+        "lit": "^2.7.4",
+        "marked": "^4.3.0"
     }
 }
