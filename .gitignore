@@ -61,12 +61,6 @@ typings/
 # Playwright
 playwright-report/
 test-results/
-playwright.config.js
-e2e/
-
-# Local verification suites and hardware smoke tools
-test/
-scripts/audio-device-smoke.js
 
 # E2E test isolated config directories
 .test-config/
