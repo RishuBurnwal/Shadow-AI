@@ -1,7 +1,18 @@
 const { Ollama } = require('ollama');
 const { getSystemPrompt } = require('./prompts');
-const { sendToRenderer, initializeNewSession, saveConversationTurn } = require('./gemini');
 const { initializeSileroVAD, VadProcessor, isAvailable, FRAME_SIZE } = require('./sileroVad');
+
+// Lazy load gemini to avoid requiring 'electron' at module load time.
+// This allows unit tests that import localai.js for resample24kTo16k to
+// work without an Electron runtime.
+let _gemini = null;
+function getGemini() {
+    if (!_gemini) _gemini = require('./gemini');
+    return _gemini;
+}
+function sendToRenderer(ch, data) { return getGemini().sendToRenderer(ch, data); }
+function initializeNewSession(p, c) { return getGemini().initializeNewSession(p, c); }
+function saveConversationTurn(t, a) { return getGemini().saveConversationTurn(t, a); }
 
 // ── State ──
 
@@ -118,7 +129,7 @@ async function processVAD(pcm16kBuffer) {
             speechBuffers = [];
             lastRollingTranscriptionTime = Date.now();
             console.log('[LocalAI] Speech started (RMS:', rms.toFixed(4),
-                sileroVad ? ', Silero prob:', sileroVad.getProbability().toFixed(4) : '');
+                sileroVad ? ', Silero prob: ' + sileroVad.getProbability().toFixed(4) : '');
             sendToRenderer('update-status', 'Listening... (speech detected)');
 
             // Start rolling-window transcription timer during speech
@@ -564,4 +575,6 @@ module.exports = {
     isLocalSessionActive,
     sendLocalText,
     sendLocalImage,
+    // Exported for unit testing
+    resample24kTo16k,
 };
