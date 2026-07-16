@@ -333,6 +333,7 @@ function getCredentials() {
     // Encrypted format — decrypt each value
     const safeStorage = getSafeStorage();
     const credentials = { ...DEFAULT_CREDENTIALS };
+    let decryptionFailed = false;
     for (const key of Object.keys(DEFAULT_CREDENTIALS)) {
         const encryptedBase64 = raw[key];
         if (encryptedBase64 && typeof encryptedBase64 === 'string' && encryptedBase64.length > 0) {
@@ -341,12 +342,17 @@ function getCredentials() {
                     const encryptedBuffer = Buffer.from(encryptedBase64, 'base64');
                     credentials[key] = safeStorage.decryptString(encryptedBuffer);
                 } catch {
+                    decryptionFailed = true;
                     credentials[key] = '';
                 }
             } else {
+                decryptionFailed = true;
                 credentials[key] = '';
             }
         }
+    }
+    if (decryptionFailed) {
+        console.warn('[Credentials] Some stored credentials could not be decrypted (safeStorage unavailable or key changed). Values reset to empty. Re-enter your API keys in Settings.');
     }
     return credentials;
 }

@@ -87,6 +87,7 @@ function getProfile() {
     // Encrypted format
     const safeStorage = getSafeStorage();
     const profile = { ...DEFAULT_PROFILE };
+    let decryptionFailed = false;
     for (const key of Object.keys(DEFAULT_PROFILE)) {
         const val = raw[key];
         if (val && typeof val === 'string' && val.length > 0) {
@@ -97,15 +98,20 @@ function getProfile() {
                     const defaultVal = DEFAULT_PROFILE[key];
                     profile[key] = Array.isArray(defaultVal) ? JSON.parse(decrypted) : decrypted;
                 } catch {
+                    decryptionFailed = true;
                     profile[key] = DEFAULT_PROFILE[key];
                 }
             } else {
-                // safeStorage unavailable — value was stored as plaintext fallback
+                decryptionFailed = true;
+                // safeStorage unavailable — try reading plaintext fallback
                 const defaultVal = DEFAULT_PROFILE[key];
                 try { profile[key] = Array.isArray(defaultVal) ? JSON.parse(val) : val; }
                 catch { profile[key] = defaultVal; }
             }
         }
+    }
+    if (decryptionFailed) {
+        console.warn('[Profile] Some profile fields could not be decrypted (safeStorage unavailable or key changed). Check your profile in AI Customization > About Me.');
     }
     return profile;
 }
