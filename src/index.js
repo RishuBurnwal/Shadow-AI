@@ -345,6 +345,17 @@ function setupStorageIpcHandlers() {
     // ============ SKILLS ============
     ipcMain.handle('skills:resume-sync', async (event, resumeText) => {
         try {
+            // One-time disclosure: resume text is sent to the configured AI provider for extraction
+            const prefs = storage.getPreferences();
+            if (!prefs.resumeSyncNotified) {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('provider-notification', {
+                        type: 'success',
+                        message: 'Resume Sync: Sending your resume text to the AI provider for skill extraction.',
+                    });
+                }
+                try { storage.updatePreference('resumeSyncNotified', true); } catch { /* best-effort */ }
+            }
             const resumeSync = require('./skills/resumeSync');
             const result = await resumeSync.action({ resumeText });
             return result;

@@ -141,13 +141,17 @@ function downloadModel(url, destPath, redirectCount = 0) {
 
 // ── Initialize ──
 
-async function initializeSileroVAD() {
+async function initializeSileroVAD(onDownloadStart) {
     if (modelInitialized && session) {
         return true;
     }
 
     try {
         const modelPath = getModelPath();
+        // Notify caller when a network download is about to begin (model not cached)
+        if (onDownloadStart && !fs.existsSync(modelPath)) {
+            onDownloadStart();
+        }
         await downloadModel(SILERO_VAD_URL, modelPath);
 
         console.log('[SileroVAD] Loading model from', modelPath);

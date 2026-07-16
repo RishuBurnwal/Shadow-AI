@@ -454,16 +454,20 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
 
         // Initialize Silero VAD (non-blocking — will fall through if unavailable)
         try {
-            await initializeSileroVAD();
+            await initializeSileroVAD(() => {
+                sendToRenderer('update-status', 'Downloading voice detection model (first time only)...');
+            });
             if (isAvailable()) {
                 sileroVad = new VadProcessor();
                 console.log('[LocalAI] Silero VAD initialized successfully');
             } else {
                 console.warn('[LocalAI] Silero VAD unavailable; falling back to RMS-only VAD');
+                sendToRenderer('update-status', 'Voice detection unavailable - using basic mode');
                 sileroVad = null;
             }
         } catch (vadError) {
             console.warn('[LocalAI] Silero VAD init failed:', vadError.message, '— using RMS-only VAD');
+            sendToRenderer('update-status', 'Voice detection unavailable - using basic mode');
             sileroVad = null;
         }
 

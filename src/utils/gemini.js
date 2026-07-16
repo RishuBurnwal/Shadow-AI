@@ -13,6 +13,7 @@ const {
     incrementCharUsage,
     getModelForToday,
     normalizeLanguageCode,
+    updatePreference,
 } = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const { getConfiguredProviders, streamWithFallback, markProviderSuccess, markProviderFailure } = require('./providerRouter');
@@ -1338,6 +1339,14 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 // Memory extraction (skipped when privacy mode is on)
                 const prefs = getPreferences();
                 if (!prefs.privacyMode) {
+                    // Show one-time disclosure that session content is sent to the AI provider
+                    if (!prefs.memoryExtractionNotified) {
+                        sendToRenderer('provider-notification', {
+                            type: 'success',
+                            message: 'Memory: Learning new facts from this session (content sent to your AI provider).',
+                        });
+                        try { updatePreference('memoryExtractionNotified', true); } catch { /* best-effort */ }
+                    }
                     extractFactsFromSession(history).then(newFacts => {
                         if (newFacts.length > 0) {
                             const existing = getMemory();
