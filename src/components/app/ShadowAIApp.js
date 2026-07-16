@@ -644,6 +644,7 @@ export class ShadowAIApp extends LitElement {
             });
             this._interimTranscriptionHandler = (_, data) => {
                 this.interimTranscription = data;
+                if (data?.isFinal && data.text?.trim()) this._pendingInterviewerQuestion = data.text.trim();
                 this.requestUpdate();
             };
             ipcRenderer.on('interim-transcription', this._interimTranscriptionHandler);
@@ -764,8 +765,10 @@ export class ShadowAIApp extends LitElement {
     }
 
     addNewResponse(response) {
+        this._currentInterviewerQuestion = this._pendingInterviewerQuestion || '';
+        this._pendingInterviewerQuestion = '';
         const wasOnLatest = this.currentResponseIndex === this.responses.length - 1;
-        this.responses = [...this.responses, response];
+        this.responses = [...this.responses, this.formatInterviewExchange(response)];
         if (wasOnLatest || this.currentResponseIndex === -1) {
             this.currentResponseIndex = this.responses.length - 1;
         }
@@ -783,12 +786,18 @@ export class ShadowAIApp extends LitElement {
     }
 
     updateCurrentResponse(response) {
+        response = this.formatInterviewExchange(response);
         if (this.responses.length > 0) {
             this.responses = [...this.responses.slice(0, -1), response];
         } else {
             this.addNewResponse(response);
         }
         this.requestUpdate();
+    }
+
+    formatInterviewExchange(response) {
+        const answer = String(response || '');
+        return this._currentInterviewerQuestion ? `**Interviewer:** ${this._currentInterviewerQuestion}\n\n**Candidate:** ${answer}` : answer;
     }
 
     // ── Navigation ──

@@ -152,6 +152,15 @@ test('empty transcription metadata cannot cancel a pending interview answer', ()
     assert.doesNotMatch(source, /sendRealtimeInput\([\s\S]{0,160}\.catch/);
 });
 
+test('response tab pairs the interviewer question with the candidate answer', () => {
+    const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+    const assistantSource = fs.readFileSync(path.join(root, 'src/components/views/AssistantView.js'), 'utf8');
+    assert.match(appSource, /\*\*Interviewer:\*\*/);
+    assert.match(appSource, /\*\*Candidate:\*\*/);
+    assert.match(appSource, /data\?\.isFinal/);
+    assert.match(assistantSource, /'INTERVIEWER:'/);
+});
+
 test('production credential storage never falls back to plaintext', () => {
     const source = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
 

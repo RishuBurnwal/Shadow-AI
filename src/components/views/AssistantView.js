@@ -798,7 +798,7 @@ export class AssistantView extends LitElement {
                 this.interimTranscription && this.interimTranscription.text
                     ? html`
                           <div class="caption-bar">
-                              <span class="caption-label">${this.interimTranscription.isFinal ? 'YOU:' : 'LISTENING:'}</span>
+                              <span class="caption-label">${this.interimTranscription.isFinal ? 'INTERVIEWER:' : 'LISTENING:'}</span>
                               <span class="caption-text ${this.interimTranscription.isFinal ? 'final' : 'partial'}"
                                   >${this.interimTranscription.text}</span
                               >
