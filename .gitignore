@@ -120,6 +120,12 @@ graphify-out/
 AGENTS.md
 CLAUDE.md
 
+# Audit and analysis documents with security-relevant file/line references
+# (removed from repo in commit x — kept here to prevent accidental re-add)
+Shadow-AI_Audit_Report.docx
+Shadow-AI_Fixing_Plan_and_Prompt.md
+shadow_audit_text.txt
+
 # Legacy design archive (active application assets remain tracked)
 src/assets/old/
 

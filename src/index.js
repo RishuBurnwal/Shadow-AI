@@ -4,7 +4,7 @@ if (require('electron-squirrel-startup')) {
 
 const fs = require('fs');
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
-const { createWindow, updateGlobalShortcuts } = require('./utils/window');
+const { createWindow } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
 const storage = require('./storage');
 const soul = require('./soul');
@@ -480,14 +480,6 @@ function setupGeneralIpcHandlers() {
         } catch (error) {
             console.error('Error opening external URL:', error);
             return { success: false, error: error.message };
-        }
-    });
-
-    ipcMain.on('update-keybinds', (event, newKeybinds) => {
-        if (mainWindow) {
-            // Also save to storage
-            storage.setKeybinds(newKeybinds);
-            updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
         }
     });
 

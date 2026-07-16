@@ -321,6 +321,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 
     ipcMain.on('update-keybinds', (event, newKeybinds) => {
         if (!mainWindow.isDestroyed()) {
+            // Persist to storage before re-registering shortcuts
+            storage.setKeybinds(newKeybinds);
             updateGlobalShortcuts(newKeybinds, mainWindow, sendToRenderer, geminiSessionRef);
         }
     });
