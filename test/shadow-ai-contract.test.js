@@ -145,6 +145,13 @@ test('Gemini Live remains transcription-only and streams each incoming audio chu
     assert.doesNotMatch(source, /pendingAudioChunks|audioBatch/);
 });
 
+test('empty transcription metadata cannot cancel a pending interview answer', () => {
+    const source = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
+    assert.match(source, /if \(hasInputSpeech\) answerDebouncer\.interrupt\(\)/);
+    assert.doesNotMatch(source, /isInputTranscription\) answerDebouncer\.interrupt/);
+    assert.doesNotMatch(source, /sendRealtimeInput\([\s\S]{0,160}\.catch/);
+});
+
 test('production credential storage never falls back to plaintext', () => {
     const source = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
 

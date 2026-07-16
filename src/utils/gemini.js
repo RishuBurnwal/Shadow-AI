@@ -732,31 +732,26 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                         if (!currentSession) currentSession = createSessionState();
                         const s = currentSession;
 
-                        const isInputTranscription = !!message.serverContent?.inputTranscription;
+                        const inputTranscription = message.serverContent?.inputTranscription;
+                        const inputText = inputTranscription?.results
+                            ? formatSpeakerResults(inputTranscription.results)
+                            : inputTranscription?.text || '';
+                        const hasInputSpeech = inputText.trim().length > 0;
 
-                        if (isInputTranscription && transitionTurn(s, 'INPUT').bargeIn) {
+                        if (hasInputSpeech && transitionTurn(s, 'INPUT').bargeIn) {
                             if (isDebug) console.log('[Barge-in] User started speaking mid-answer, cancelling stream');
                             cancelCurrentAnswer();
                             sendToRenderer('update-status', 'Listening... (interrupted)');
                         }
-                        if (isInputTranscription) answerDebouncer.interrupt();
+                        if (hasInputSpeech) answerDebouncer.interrupt();
 
-                        if (message.serverContent?.inputTranscription?.results) {
-                            const formatted = formatSpeakerResults(message.serverContent.inputTranscription.results);
-                            s.transcription += formatted;
-                            if (formatted.trim()) {
-                                sendToRenderer('interim-transcription', { text: s.transcription, isFinal: false });
-                            }
-                        } else if (message.serverContent?.inputTranscription?.text) {
-                            const text = message.serverContent.inputTranscription.text;
-                            if (text.trim() !== '') {
-                                s.transcription += text;
-                                sendToRenderer('interim-transcription', { text: s.transcription, isFinal: false });
-                            }
+                        if (hasInputSpeech) {
+                            s.transcription += inputText;
+                            sendToRenderer('interim-transcription', { text: s.transcription, isFinal: false });
                         }
 
                         // Track timing: whenever input transcription updates, note the time
-                        if (message.serverContent?.inputTranscription) {
+                        if (hasInputSpeech) {
                             s.lastInputTime = Date.now();
                             if (s.turnStart === 0) {
                                 s.turnStart = Date.now();
@@ -1185,13 +1180,9 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 getLocalAi().processLocalAudio(pcmBuffer, mimeType);
             } else if (geminiSessionRef.current) {
                 if (isDebug) process.stdout.write('.');
-                geminiSessionRef.current
-                    .sendRealtimeInput({
-                        audio: { data: data, mimeType: mimeType },
-                    })
-                    .catch(err => {
-                        console.error('Error sending system audio:', err);
-                    });
+                geminiSessionRef.current.sendRealtimeInput({
+                    audio: { data: data, mimeType: mimeType },
+                });
             }
         } catch (error) {
             console.error('Error processing system audio:', error);
@@ -1209,13 +1200,9 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 getLocalAi().processLocalAudio(pcmBuffer, mimeType);
             } else if (geminiSessionRef.current) {
                 if (isDebug) process.stdout.write(',');
-                geminiSessionRef.current
-                    .sendRealtimeInput({
-                        audio: { data: data, mimeType: mimeType },
-                    })
-                    .catch(err => {
-                        console.error('Error sending mic audio:', err);
-                    });
+                geminiSessionRef.current.sendRealtimeInput({
+                    audio: { data: data, mimeType: mimeType },
+                });
             }
         } catch (error) {
             console.error('Error processing mic audio:', error);
