@@ -222,7 +222,6 @@ export class CustomizeView extends LitElement {
         this.backgroundTransparency = 0.8;
         this.fontSize = 20;
         this.audioMode = 'speaker_only';
-        this.customPrompt = '';
         this.theme = 'dark';
         this._loadFromStorage();
     }
@@ -241,7 +240,6 @@ export class CustomizeView extends LitElement {
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
-            this.customPrompt = prefs.customPrompt ?? '';
             this.theme = prefs.theme ?? 'dark';
             if (keybinds) {
                 this.keybinds = { ...this.getDefaultKeybinds(), ...keybinds };
@@ -314,6 +312,8 @@ export class CustomizeView extends LitElement {
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
             scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
+            toggleMinimize: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
+            toggleMaximize: isMac ? 'Cmd+Shift+X' : 'Ctrl+Shift+X',
         };
     }
 
@@ -324,6 +324,8 @@ export class CustomizeView extends LitElement {
             { key: 'moveLeft', name: 'Move Window Left', description: 'Move the app window left' },
             { key: 'moveRight', name: 'Move Window Right', description: 'Move the app window right' },
             { key: 'toggleVisibility', name: 'Toggle Visibility', description: 'Show or hide the app window' },
+            { key: 'toggleMinimize', name: 'Minimize / Restore', description: 'Minimize the window or restore it with the same shortcut' },
+            { key: 'toggleMaximize', name: 'Maximize / Restore', description: 'Maximize the window or restore its previous size' },
             { key: 'toggleClickThrough', name: 'Toggle Click-through', description: 'Enable or disable click-through mode' },
             { key: 'nextStep', name: 'Ask Next Step', description: 'Take screenshot and ask for next step' },
             { key: 'previousResponse', name: 'Previous Response', description: 'Move to previous AI response' },
@@ -359,11 +361,6 @@ export class CustomizeView extends LitElement {
     handleLayoutModeSelect(e) {
         this.layoutMode = e.target.value;
         this.onLayoutModeChange(this.layoutMode);
-    }
-
-    async handleCustomPromptInput(e) {
-        this.customPrompt = e.target.value;
-        await shadowAI.storage.updatePreference('customPrompt', this.customPrompt);
     }
 
     async handleAudioModeSelect(e) {
@@ -511,6 +508,10 @@ export class CustomizeView extends LitElement {
             // Restore all preferences to defaults
             const defaults = {
                 customPrompt: '',
+                targetRoleContext: '',
+                jobDescription: '',
+                companyContext: '',
+                additionalContext: '',
                 selectedProfile: 'interview',
                 selectedLanguage: 'en-US',
                 selectedScreenshotInterval: '5',
@@ -546,7 +547,6 @@ export class CustomizeView extends LitElement {
             this.googleSearchEnabled = defaults.googleSearchEnabled;
             this.vadSilenceMs = defaults.vadSilenceMs;
             this.responseDelayMs = defaults.responseDelayMs;
-            this.customPrompt = defaults.customPrompt;
             this.theme = defaults.theme;
 
             // Notify parent callbacks

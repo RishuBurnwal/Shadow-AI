@@ -20,6 +20,7 @@ const invokeChannels = new Set([
     'skills:create',
     'skills:delete',
     'skills:list',
+    'skills:extract-resume-pdf',
     'skills:update',
     'start-macos-audio',
     'stop-macos-audio',
@@ -54,6 +55,7 @@ const invokeChannels = new Set([
     'toggle-window-visibility',
     'update-google-search-setting',
     'window-minimize',
+    'window-maximize',
 ]);
 const sendChannels = new Set(['send-audio-content', 'send-mic-audio-content', 'set-passthrough-header-region', 'update-keybinds', 'view-changed']);
 const receiveChannels = new Set([

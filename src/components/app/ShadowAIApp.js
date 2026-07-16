@@ -47,6 +47,9 @@ export class ShadowAIApp extends LitElement {
             gap: var(--space-sm);
             padding-right: var(--space-md);
             background: var(--header-solid-background, #101010);
+            opacity: 1;
+            isolation: isolate;
+            pointer-events: auto;
             border-bottom: 1px solid var(--border);
             box-shadow: 0 1px 8px rgba(0, 0, 0, 0.28);
         }
@@ -820,6 +823,13 @@ export class ShadowAIApp extends LitElement {
         }
     }
 
+    async _handleMaximize() {
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
+            await ipcRenderer.invoke('window-maximize');
+        }
+    }
+
     async handleHideToggle() {
         if (window.electronAPI) {
             const { ipcRenderer } = window.electronAPI;
@@ -1106,7 +1116,7 @@ export class ShadowAIApp extends LitElement {
             },
             {
                 id: 'ai-customize',
-                label: 'AI Customization',
+                label: 'AI & Skills',
                 icon: html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24">
                     <path
                         fill="none"
@@ -1271,8 +1281,8 @@ export class ShadowAIApp extends LitElement {
                 <div class="top-drag-bar">
                     <div class="traffic-lights">
                         <button class="traffic-light close" @click=${() => this.handleClose()} title="Close"></button>
-                        <button class="traffic-light minimize" @click=${() => this._handleMinimize()} title="Minimize"></button>
-                        <button class="traffic-light maximize" title="Maximize"></button>
+                        <button class="traffic-light minimize" @click=${() => this._handleMinimize()} title="Minimize / restore"></button>
+                        <button class="traffic-light maximize" @click=${() => this._handleMaximize()} title="Maximize / restore"></button>
                     </div>
                     <div class="drag-region"></div>
                     <label class="provider-select-wrap" title=${selectedProviderStatus.message}>

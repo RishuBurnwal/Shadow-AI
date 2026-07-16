@@ -232,6 +232,7 @@ function buildProfileSummary() {
         if (p.experienceSummary) parts.push(`Background: ${p.experienceSummary}`);
         if (p.keySkills.length > 0) parts.push(`Key skills: ${p.keySkills.join(', ')}`);
         if (p.pastProjects.length > 0) parts.push(`Past projects: ${p.pastProjects.join('; ')}`);
+        if (p.resumeText) parts.push(`Resume:\n${p.resumeText.slice(0, 50000)}`);
         if (p.preferredTone) parts.push(`Preferred tone: ${p.preferredTone}`);
         return `About the candidate
 -----

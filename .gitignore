@@ -61,6 +61,12 @@ typings/
 # Playwright
 playwright-report/
 test-results/
+playwright.config.js
+e2e/
+
+# Local verification suites and hardware smoke tools
+test/
+scripts/audio-device-smoke.js
 
 # E2E test isolated config directories
 .test-config/
@@ -125,6 +131,10 @@ CLAUDE.md
 Shadow-AI_Audit_Report.docx
 Shadow-AI_Fixing_Plan_and_Prompt.md
 shadow_audit_text.txt
+01_AUDIT_REPORT.md
+02_FIXING_PLAN_AND_PROMPT.md
+03_ENHANCEMENTS_AND_ROADMAP.md
+04_RELEASE_AUDIT_REPORT.md
 
 # Windows phantom device file (reserved name — always appears untracked)
 nul

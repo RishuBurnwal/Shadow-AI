@@ -21,11 +21,16 @@ const DEFAULT_CONFIG = {
 };
 
 const { defaultCredentials } = require('./utils/providers.config');
+const { getStarterSkills, STARTER_SKILLS_VERSION } = require('./skills/promptSkills');
 
 const DEFAULT_CREDENTIALS = defaultCredentials();
 
 const DEFAULT_PREFERENCES = {
     customPrompt: '',
+    targetRoleContext: '',
+    jobDescription: '',
+    companyContext: '',
+    additionalContext: '',
     sessionName: '',
     sessionNote: '',
     providerMode: 'byok',
@@ -48,7 +53,8 @@ const DEFAULT_PREFERENCES = {
     vadSilenceMs: 500,
     responseDelayMs: 1500,
     privacyMode: false,
-    promptSkills: [],
+    promptSkills: getStarterSkills(),
+    starterSkillsVersion: STARTER_SKILLS_VERSION,
 };
 
 function normalizeLanguageCode(value) {
@@ -162,11 +168,16 @@ const CONFIG_MIGRATIONS = {
 
 const PREFERENCES_MIGRATIONS = {
     // v0 (any pre-migration preferences) → current defaults merged over existing
-    0: data => ({
-        ...DEFAULT_PREFERENCES,
-        ...data,
-        selectedLanguage: normalizeLanguageCode(data.selectedLanguage),
-    }),
+    0: data => {
+        const needsStarterSkills = !Number(data?.starterSkillsVersion);
+        return {
+            ...DEFAULT_PREFERENCES,
+            ...data,
+            promptSkills: needsStarterSkills ? getStarterSkills() : data.promptSkills,
+            starterSkillsVersion: needsStarterSkills ? STARTER_SKILLS_VERSION : data.starterSkillsVersion,
+            selectedLanguage: normalizeLanguageCode(data.selectedLanguage),
+        };
+    },
 };
 
 function getCurrentVersion(data) {

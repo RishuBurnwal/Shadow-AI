@@ -15,6 +15,35 @@ LOG_DIR = ROOT / "logs"
 READY_MARKER = "shadow-ai-ready"
 STARTUP_TIMEOUT = 60  # first-run model and native-runtime startup can be slow
 
+RESET = "\033[0m"
+CYAN = "\033[96m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+RED = "\033[91m"
+BOLD = "\033[1m"
+
+
+def enable_terminal_colors() -> None:
+    if os.name == "nt":
+        os.system("")  # Enables ANSI processing in modern Windows terminals.
+
+
+def banner(title: str, subtitle: str = "") -> None:
+    width = 62
+    print(f"\n{CYAN}+{'-' * width}+")
+    print(f"|{BOLD}{title:^{width}}{RESET}{CYAN}|")
+    if subtitle:
+        print(f"|{subtitle:^{width}}|")
+    print(f"+{'-' * width}+{RESET}")
+
+
+def step(index: int, total: int, text: str) -> None:
+    print(f"{CYAN}[{index}/{total}]{RESET} {text}", flush=True)
+
+
+def success(text: str) -> None:
+    print(f"{GREEN}[OK]{RESET} {text}")
+
 
 def cleanup_old_logs() -> None:
     """Remove all but the 5 most recent launcher log files."""
@@ -151,13 +180,14 @@ def show_provider_status() -> int:
     return 0
 
 
-def menu_args(provider: str = "auto", *, info: bool = False, skip_install: bool = False) -> argparse.Namespace:
+def menu_args(provider: str = "auto", *, info: bool = False, skip_install: bool = False, skip_update: bool = False) -> argparse.Namespace:
     return argparse.Namespace(
         setup=False,
         provider=provider,
         providers=False,
         info=info,
         skip_install=skip_install,
+        skip_update=skip_update,
         wait=False,
     )
 
@@ -207,8 +237,8 @@ def repository_matches_expected_remote(remote_url: str) -> bool:
     return normalized == expected or normalized.endswith("github.com:rishuburnwal/shadow-ai")
 
 
-def update_project() -> int:
-    print("\nShadow AI project updater", flush=True)
+def update_project(*, restart: bool = True, quiet_current: bool = False) -> int:
+    banner("SHADOW AI UPDATER", "verified fast-forward updates")
     try:
         if not (ROOT / ".git").exists():
             raise RuntimeError("This project is not a Git checkout. Clone the GitHub repository before using updates.")
@@ -220,16 +250,17 @@ def update_project() -> int:
             raise RuntimeError("Local tracked files have uncommitted changes. Commit or restore them before updating.")
 
         local_hash = git_output(["rev-parse", "HEAD"])
-        print(f"Local hash : {local_hash[:12]}")
-        print("Checking GitHub for updates...", flush=True)
+        print(f"  Local  {local_hash[:12]}")
+        print("  Checking official GitHub remote...", flush=True)
         git = shutil.which("git")
         completed = subprocess.run([git, "fetch", "origin", UPDATE_BRANCH, "--prune"], cwd=ROOT, check=False)
         if completed.returncode:
             return completed.returncode
         remote_hash = git_output(["rev-parse", f"origin/{UPDATE_BRANCH}"])
-        print(f"GitHub hash: {remote_hash[:12]}")
+        print(f"  Remote {remote_hash[:12]}")
         if local_hash == remote_hash:
-            print("Project is already up to date.")
+            if not quiet_current:
+                success("Project is already up to date")
             return 0
 
         changed_files = [line for line in git_output(["diff", "--name-only", local_hash, remote_hash]).splitlines() if line]
@@ -244,9 +275,15 @@ def update_project() -> int:
         if completed.returncode:
             return completed.returncode
 
+        # Prove every tracked file now exactly matches the fetched commit.
+        if git_output(["diff", "--name-only", f"origin/{UPDATE_BRANCH}"]):
+            raise RuntimeError("Post-update file verification failed: local files do not match GitHub.")
+        if git_output(["rev-parse", "HEAD"]) != remote_hash:
+            raise RuntimeError("Post-update commit hash verification failed.")
+
         npm = npm_command()
         for arguments, label in (
-            (["install"], "Installing updated dependencies..."),
+            (["ci"], "Installing exact lockfile dependencies..."),
             (["test"], "Validating updated project..."),
             (["run", "package"], "Rebuilding Shadow AI..."),
         ):
@@ -256,27 +293,28 @@ def update_project() -> int:
                 print("Update downloaded, but validation/build failed. Application was not restarted.", file=sys.stderr)
                 return completed.returncode
 
-        print("Update complete. Restarting Shadow AI...", flush=True)
-        return launch(menu_args(skip_install=True))
+        success("Every tracked file and dependency verified")
+        if restart:
+            print("Restarting Shadow AI...", flush=True)
+            return launch(menu_args(skip_install=True, skip_update=True))
+        return 0
     except RuntimeError as error:
         print(f"UPDATE ERROR: {error}", file=sys.stderr)
         return 2
 
 
 def interactive_menu() -> int:
-    print("\n========================================")
-    print("          Shadow AI Project Menu")
-    print("========================================")
-    print("  1. Run project (default)")
-    print("  2. Complete installation and setup")
-    print("  3. Install or update dependencies")
-    print("  4. Build application package")
-    print("  5. Update project from GitHub")
-    print("  6. Select API provider and launch")
-    print("  7. Show API provider status")
-    print("  8. Show system diagnostics")
-    print("  0. Exit")
-    selection = input("\nChoose option number [1]: ").strip() or "1"
+    banner("SHADOW AI", "secure desktop assistant control center")
+    print(f"  {GREEN}1{RESET}  >  Run project (auto-update + repair)")
+    print(f"  {GREEN}2{RESET}  *  One-click complete installation")
+    print(f"  {GREEN}3{RESET}  v  Reinstall exact dependencies")
+    print(f"  {GREEN}4{RESET}  #  Build application package")
+    print(f"  {GREEN}5{RESET}  @  Verify and update from GitHub")
+    print(f"  {GREEN}6{RESET}  o  Select provider and launch")
+    print(f"  {GREEN}7{RESET}  .  Provider status")
+    print(f"  {GREEN}8{RESET}  i  System diagnostics")
+    print(f"  {YELLOW}0{RESET}  x  Exit")
+    selection = input(f"\n{CYAN}shadow-ai >{RESET} ").strip() or "1"
 
     if selection == "0":
         print("Goodbye.")
@@ -287,7 +325,7 @@ def interactive_menu() -> int:
         return setup_project(menu_args())
     if selection == "3":
         ensure_env_file()
-        return run_npm_task(["install"], "Installing Shadow AI dependencies...")
+        return run_npm_task(["ci"], "Installing exact lockfile dependencies...")
     if selection == "4":
         return run_npm_task(["run", "package"], "Building Shadow AI package...")
     if selection == "5":
@@ -304,8 +342,7 @@ def interactive_menu() -> int:
 
 
 def setup_project(args: argparse.Namespace) -> int:
-    print("Shadow AI complete project setup", flush=True)
-    print(f"project: {ROOT}", flush=True)
+    banner("ONE-CLICK INSTALL", str(ROOT))
     try:
         validate_project_files()
         node = shutil.which("node")
@@ -321,32 +358,38 @@ def setup_project(args: argparse.Namespace) -> int:
 
         npm = npm_command()
         npm_version = command_output([npm, "--version"])
-        print(f"[1/5] Runtime OK: Python {sys.version_info.major}.{sys.version_info.minor}, Node {node_version}, npm {npm_version}", flush=True)
-        print(f"[2/5] Environment: .env {ensure_env_file()}", flush=True)
+        git_version = git_output(["--version"])
+        step(1, 6, f"Runtime: Python {sys.version_info.major}.{sys.version_info.minor} · Node {node_version} · npm {npm_version} · {git_version}")
+        step(2, 6, f"Environment: .env {ensure_env_file()}")
 
         if args.skip_install:
             if not (ROOT / "node_modules" / "electron").exists():
                 raise RuntimeError("--skip-install was used but Electron dependencies are missing.")
-            print("[3/5] Dependencies: existing node_modules verified", flush=True)
+            step(3, 6, "Dependencies: existing Electron runtime found")
         else:
-            print("[3/5] Installing dependencies with npm install...", flush=True)
-            completed = subprocess.run([npm, "install"], cwd=ROOT, check=False)
+            step(3, 6, "Installing exact package-lock dependencies with npm ci")
+            completed = subprocess.run([npm, "ci"], cwd=ROOT, check=False)
             if completed.returncode:
                 return completed.returncode
 
-        print("[4/5] Running test suite...", flush=True)
+        step(4, 6, "Verifying installed dependency tree")
+        completed = subprocess.run([npm, "ls", "--depth=0"], cwd=ROOT, check=False)
+        if completed.returncode:
+            return completed.returncode
+
+        step(5, 6, "Running complete test suite")
         completed = subprocess.run([npm, "test"], cwd=ROOT, check=False)
         if completed.returncode:
             return completed.returncode
 
-        print("[5/5] Building Electron package...", flush=True)
+        step(6, 6, "Building Electron application package")
         completed = subprocess.run([npm, "run", "package"], cwd=ROOT, check=False)
         if completed.returncode:
             return completed.returncode
 
         load_env(ROOT / ".env")
         available = configured_providers()
-        print("Setup complete.")
+        success("Installation, dependency verification, tests and package complete")
         print("configured providers: " + (", ".join(available) if available else "none"))
         if not available:
             print("Next: add at least one API key in .env or through the Shadow AI UI.")
@@ -383,6 +426,11 @@ def launch(args: argparse.Namespace) -> int:
         print(f"debug: {'enabled' if os.environ.get('SHADOW_AI_DEBUG') else 'disabled (set SHADOW_AI_DEBUG=1)'}")
         print(f"whisper backend: logged in app console on local mode startup")
         return 0
+
+    if not args.skip_update:
+        update_status = update_project(restart=False, quiet_current=True)
+        if update_status:
+            return update_status
 
     npm = npm_command()
     if not args.skip_install and not (ROOT / "node_modules" / "electron").exists():
@@ -456,11 +504,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--providers", action="store_true", help="show configured providers without revealing keys")
     parser.add_argument("--info", action="store_true", help="show safe launcher diagnostics")
     parser.add_argument("--skip-install", action="store_true", help="reuse installed dependencies during launch or setup")
+    parser.add_argument("--skip-update", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--wait", action="store_true", help="keep the launcher attached to Electron")
     return parser
 
 
 if __name__ == "__main__":
+    enable_terminal_colors()
     load_env(ROOT / ".env")
     if len(sys.argv) == 1:
         raise SystemExit(interactive_menu())

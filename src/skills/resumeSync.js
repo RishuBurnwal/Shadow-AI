@@ -34,7 +34,7 @@ const skill = {
 
 Resume:
 -----
-${resumeText.slice(0, 8000)}
+${resumeText.slice(0, 30000)}
 -----
 
 Return ONLY the JSON object, no other text.`;

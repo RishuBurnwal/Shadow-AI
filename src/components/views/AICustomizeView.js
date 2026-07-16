@@ -158,6 +158,9 @@ export class AICustomizeView extends LitElement {
         selectedProfile: { type: String },
         onProfileChange: { type: Function },
         _context: { state: true },
+        _roleContext: { state: true },
+        _jobDescription: { state: true },
+        _companyContext: { state: true },
         _activeTab: { state: true },
         // Profile fields
         _profileName: { state: true },
@@ -176,6 +179,7 @@ export class AICustomizeView extends LitElement {
         _promptSkills: { state: true },
         _editingSkill: { state: true },
         _skillError: { state: true },
+        _resumeFileName: { state: true },
     };
 
     constructor() {
@@ -183,7 +187,10 @@ export class AICustomizeView extends LitElement {
         this.selectedProfile = 'interview';
         this.onProfileChange = () => {};
         this._context = '';
-        this._activeTab = 'context';
+        this._roleContext = '';
+        this._jobDescription = '';
+        this._companyContext = '';
+        this._activeTab = 'skills';
         this._skills = [];
         this._syncing = false;
         this._syncResult = null;
@@ -191,6 +198,7 @@ export class AICustomizeView extends LitElement {
         this._promptSkills = [];
         this._editingSkill = null;
         this._skillError = '';
+        this._resumeFileName = '';
         this._saveTimer = null;
         this._loadFromStorage();
     }
@@ -203,7 +211,10 @@ export class AICustomizeView extends LitElement {
     async _loadFromStorage() {
         try {
             const prefs = await shadowAI.storage.getPreferences();
-            this._context = prefs.customPrompt || '';
+            this._context = prefs.additionalContext || prefs.customPrompt || '';
+            this._roleContext = prefs.targetRoleContext || '';
+            this._jobDescription = prefs.jobDescription || '';
+            this._companyContext = prefs.companyContext || '';
             this._promptSkills = await shadowAI.storage.getPromptSkills();
 
             // Load skills
@@ -235,9 +246,15 @@ export class AICustomizeView extends LitElement {
         this.onProfileChange(e.target.value);
     }
 
-    async _saveContext(val) {
-        this._context = val;
-        await shadowAI.storage.updatePreference('customPrompt', val);
+    async _saveContext(key, val) {
+        this[key] = val;
+        const preference = {
+            _context: 'additionalContext',
+            _roleContext: 'targetRoleContext',
+            _jobDescription: 'jobDescription',
+            _companyContext: 'companyContext',
+        }[key];
+        await shadowAI.storage.updatePreference(preference, val);
     }
 
     async _saveProfile() {
@@ -366,6 +383,28 @@ export class AICustomizeView extends LitElement {
         this.requestUpdate();
     }
 
+    async _handleResumePdf(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        this._syncResult = null;
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            this._syncResult = { type: 'error', message: 'Only PDF files are supported.' };
+            return;
+        }
+        this._syncing = true;
+        try {
+            const result = await shadowAI.storage.extractResumePdf(new Uint8Array(await file.arrayBuffer()));
+            if (!result.success) throw new Error(result.error);
+            this._resumeText = result.data;
+            this._resumeFileName = file.name;
+            await this._saveProfile();
+            this._syncResult = { type: 'success', message: 'PDF imported. Review the extracted text below.' };
+        } catch (error) {
+            this._syncResult = { type: 'error', message: error.message || 'PDF import failed.' };
+        }
+        this._syncing = false;
+    }
+
     renderSkillsTab() {
         // Get all available skills
         const allSkills = [
@@ -374,11 +413,23 @@ export class AICustomizeView extends LitElement {
                 label: 'STAR Method Answers',
                 desc: 'Formats behavioral interview answers using Situation, Task, Action, Result. Uses your stored projects as concrete examples.',
             },
-            { id: 'resume-sync', label: 'Resume Sync', desc: 'Lets you paste a resume and auto-fill your profile fields via AI extraction.' },
         ];
 
         return html`
             <div class="form-grid">
+                <div class="surface" style="padding:var(--space-md);margin-bottom:var(--space-md);">
+                    <div class="form-label">How to use skills</div>
+                    <div class="form-help" style="line-height:1.6;">
+                        1. Turn on one or more skills below. 2. Start a session normally and ask a question or analyse the screen. 3. Every enabled
+                        skill is automatically combined with your profile and context for each AI answer. Use <strong>Edit / rename</strong> to change
+                        a preset, or <strong>Add skill</strong> to write your own instructions. Turn a skill off when you do not want it applied.
+                    </div>
+                    <div class="form-help" style="margin-top:var(--space-xs);">
+                        Active custom skills: <strong>${this._promptSkills.filter(skill => skill.enabled).length}</strong>. Combining skills is
+                        supported—for example, enable <strong>Screen Analyst</strong> with <strong>Instructor & Guide</strong> to analyse the screen
+                        and teach what it means step by step.
+                    </div>
+                </div>
                 <div class="form-help" style="margin-bottom:var(--space-sm);">
                     Skills add capabilities and instructions tailored to your current profile. Skills are auto-enabled based on your selected profile
                     and can be toggled individually.
@@ -411,7 +462,7 @@ export class AICustomizeView extends LitElement {
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-top:var(--space-lg);">
                     <div>
                         <div class="form-label">Prompt skills</div>
-                        <div class="form-help">Create reusable instructions that are injected into every AI request while enabled.</div>
+                        <div class="form-help">Ready-made and custom instructions injected into every AI request while enabled.</div>
                     </div>
                     <button class="btn-secondary" @click=${this._newPromptSkill}>Add skill</button>
                 </div>
@@ -521,15 +572,42 @@ export class AICustomizeView extends LitElement {
                         ${profiles.map(profile => html`<option value=${profile.value}>${profile.label}</option>`)}
                     </select>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">Target Role</label>
+                    <input
+                        class="control"
+                        placeholder="e.g. Senior Backend Engineer"
+                        .value=${this._roleContext}
+                        @input=${e => this._saveContext('_roleContext', e.target.value)}
+                    />
+                </div>
                 <div class="form-group vertical">
-                    <label class="form-label">Custom Instructions</label>
+                    <label class="form-label">Job Description</label>
                     <textarea
                         class="control"
-                        placeholder="Resume details, role requirements, constraints..."
-                        .value=${this._context}
-                        @input=${e => this._saveContext(e.target.value)}
+                        placeholder="Paste the responsibilities, requirements, and preferred qualifications..."
+                        .value=${this._jobDescription}
+                        @input=${e => this._saveContext('_jobDescription', e.target.value)}
                     ></textarea>
-                    <div class="form-help">Sent as context at session start. Keep it short.</div>
+                </div>
+                <div class="form-group vertical">
+                    <label class="form-label">Company / Industry Context</label>
+                    <textarea
+                        class="control"
+                        placeholder="Company, product, industry, interviewer, or meeting context..."
+                        .value=${this._companyContext}
+                        @input=${e => this._saveContext('_companyContext', e.target.value)}
+                    ></textarea>
+                </div>
+                <div class="form-group vertical">
+                    <label class="form-label">Additional Instructions</label>
+                    <textarea
+                        class="control"
+                        placeholder="Constraints, answer preferences, important notes..."
+                        .value=${this._context}
+                        @input=${e => this._saveContext('_context', e.target.value)}
+                    ></textarea>
+                    <div class="form-help">Each section is saved independently and combined automatically when a session starts.</div>
                 </div>
             </div>
         `;
@@ -656,53 +734,69 @@ export class AICustomizeView extends LitElement {
                     </div>
                 </div>
 
+                <div class="profile-actions">
+                    <button class="btn-danger" @click=${this._deleteProfile}>Clear Profile</button>
+                </div>
+                <div class="form-help">Saved automatically as you type. Encrypted at rest.</div>
+            </div>
+        `;
+    }
+
+    renderResumeTab() {
+        return html`
+            <div class="form-grid">
+                <div class="form-help">
+                    Use either option. Supported: text-based PDF up to 10 MB, or Markdown/plain text up to 50,000 characters. Scanned PDFs need OCR
+                    first. The imported text is stored encrypted and used as the single resume source everywhere.
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Upload PDF</label>
+                    <input class="control" type="file" accept="application/pdf,.pdf" ?disabled=${this._syncing} @change=${this._handleResumePdf} />
+                    ${this._resumeFileName ? html`<div class="form-help">Imported: ${this._resumeFileName}</div>` : ''}
+                </div>
                 <div class="form-group vertical">
-                    <label class="form-label">Resume Text (optional)</label>
+                    <label class="form-label">Or paste resume as Markdown</label>
                     <textarea
                         class="control"
-                        style="min-height: 80px;"
-                        placeholder="Paste your full resume here for the AI to reference..."
+                        maxlength="50000"
+                        style="min-height:260px;"
+                        placeholder="# Name
+
+## Experience
+- Role, Company...
+
+## Skills
+- JavaScript"
                         .value=${this._resumeText}
                         @input=${e => {
                             this._resumeText = e.target.value;
                             this._debounceSave();
                         }}
                     ></textarea>
-                    ${
-                        this._isSkillEnabled('resume-sync')
-                            ? html`
-                                  <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-                                      <button
-                                          class="tag-add-btn"
-                                          ?disabled=${this._syncing || !this._resumeText?.trim()}
-                                          @click=${this._handleResumeSync}
-                                      >
-                                          ${this._syncing ? 'Extracting...' : 'Sync from Resume'}
-                                      </button>
-                                      ${
-                                          this._syncResult?.type === 'success'
-                                              ? html`<span style="font-size:var(--font-size-xs);color:var(--success, #4caf50);"
-                                                    >Profile fields updated. Review above.</span
-                                                >`
-                                              : ''
-                                      }
-                                      ${
-                                          this._syncResult?.type === 'error'
-                                              ? html`<span style="font-size:var(--font-size-xs);color:var(--danger, #ef4444);"
-                                                    >${this._syncResult.message}</span
-                                                >`
-                                              : ''
-                                      }
-                                  </div>
-                              `
-                            : ''
-                    }
                 </div>
-
-                <div class="profile-actions">
-                    <button class="btn-danger" @click=${this._deleteProfile}>Clear Profile</button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button class="btn-secondary" ?disabled=${this._syncing || !this._resumeText?.trim()} @click=${this._handleResumeSync}>
+                        ${this._syncing ? 'Processing...' : 'Extract profile fields'}
+                    </button>
+                    <button
+                        class="btn-danger"
+                        @click=${async () => {
+                            this._resumeText = '';
+                            this._resumeFileName = '';
+                            await this._saveProfile();
+                        }}
+                    >
+                        Clear resume
+                    </button>
                 </div>
-                <div class="form-help">Saved automatically as you type. Encrypted at rest.</div>
+                ${
+                    this._syncResult?.type === 'success'
+                        ? html`<div style="color:var(--success,#4caf50);">
+                              ${this._syncResult.message || 'Profile fields updated. Review About Me.'}
+                          </div>`
+                        : ''
+                }
+                ${this._syncResult?.type === 'error' ? html`<div style="color:var(--danger,#ef4444);">${this._syncResult.message}</div>` : ''}
             </div>
         `;
     }
@@ -722,11 +816,20 @@ export class AICustomizeView extends LitElement {
                         <button class="tab ${this._activeTab === 'profile' ? 'active' : ''}" @click=${() => this._switchTab('profile')}>
                             About Me
                         </button>
+                        <button class="tab ${this._activeTab === 'resume' ? 'active' : ''}" @click=${() => this._switchTab('resume')}>Resume</button>
                         <button class="tab ${this._activeTab === 'skills' ? 'active' : ''}" @click=${() => this._switchTab('skills')}>Skills</button>
                     </div>
 
                     <section class="surface">
-                        ${this._activeTab === 'context' ? this.renderContextTab() : this._activeTab === 'profile' ? this.renderProfileTab() : this.renderSkillsTab()}
+                        ${
+                            this._activeTab === 'context'
+                                ? this.renderContextTab()
+                                : this._activeTab === 'profile'
+                                  ? this.renderProfileTab()
+                                  : this._activeTab === 'resume'
+                                    ? this.renderResumeTab()
+                                    : this.renderSkillsTab()
+                        }
                     </section>
                 </div>
             </div>

@@ -10,7 +10,9 @@ module.exports = {
         ignore: [
             /^\/\.env$/,
             /^\/(?:\.agents|\.claude|\.codex|\.git|e2e|graphify-out|logs|out|test|test-results|__pycache__)(?:\/|$)/,
-            /^\/(?:01_AUDIT_REPORT|02_FIXING_PLAN_AND_PROMPT|03_ENHANCEMENTS_AND_ROADMAP)\.md$/,
+            /^\/(?:01_AUDIT_REPORT|02_FIXING_PLAN_AND_PROMPT|03_ENHANCEMENTS_AND_ROADMAP|04_RELEASE_AUDIT_REPORT)\.md$/,
+            /^\/playwright\.config\.js$/,
+            /^\/scripts\/audio-device-smoke\.js$/,
             /^\/(?:AGENTS|CLAUDE)\.md$/,
         ],
         name: 'Shadow AI',

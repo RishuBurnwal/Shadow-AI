@@ -115,7 +115,35 @@ function getDefaultKeybinds() {
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
         scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
         emergencyErase: isMac ? 'Cmd+Shift+E' : 'Ctrl+Shift+E',
+        toggleMinimize: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
+        toggleMaximize: isMac ? 'Cmd+Shift+X' : 'Ctrl+Shift+X',
     };
+}
+
+function toggleMinimized(mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    if (!mainWindow.isVisible() || mainWindow.isMinimized()) {
+        mainWindow.show();
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+        return true;
+    }
+    mainWindow.minimize();
+    return false;
+}
+
+function toggleMaximized(mainWindow) {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    if (!mainWindow.isVisible()) mainWindow.show();
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+        mainWindow.focus();
+        return false;
+    }
+    mainWindow.maximize();
+    mainWindow.focus();
+    return true;
 }
 
 function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef) {
@@ -162,6 +190,21 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             }
         }
     });
+
+    const windowActions = {
+        toggleMinimize: () => toggleMinimized(mainWindow),
+        toggleMaximize: () => toggleMaximized(mainWindow),
+    };
+    for (const [action, handler] of Object.entries(windowActions)) {
+        const keybind = keybinds[action];
+        if (!keybind) continue;
+        try {
+            globalShortcut.register(keybind, handler);
+            console.log(`Registered ${action}: ${keybind}`);
+        } catch (error) {
+            console.error(`Failed to register ${action} (${keybind}):`, error);
+        }
+    }
 
     // Register toggle visibility shortcut
     if (keybinds.toggleVisibility) {
@@ -312,11 +355,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         }
     });
 
-    ipcMain.handle('window-minimize', () => {
-        if (!mainWindow.isDestroyed()) {
-            mainWindow.minimize();
-        }
-    });
+    ipcMain.handle('window-minimize', () => ({ success: true, restored: toggleMinimized(mainWindow) }));
+    ipcMain.handle('window-maximize', () => ({ success: true, maximized: toggleMaximized(mainWindow) }));
 
     ipcMain.on('update-keybinds', (event, newKeybinds) => {
         if (!mainWindow.isDestroyed()) {
@@ -348,6 +388,8 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 module.exports = {
     createWindow,
     getDefaultKeybinds,
-    updateGlobalShortcuts,
     setupWindowIpcHandlers,
+    toggleMaximized,
+    toggleMinimized,
+    updateGlobalShortcuts,
 };

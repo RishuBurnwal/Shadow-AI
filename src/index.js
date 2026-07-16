@@ -354,6 +354,14 @@ function setupStorageIpcHandlers() {
         if (!storage.updatePreference('promptSkills', skills)) throw new Error('Could not save skills.');
     };
     ipcMain.handle('skills:list', async () => ({ success: true, data: promptSkills.normalizeSkills(storage.getPreferences().promptSkills) }));
+    ipcMain.handle('skills:extract-resume-pdf', async (event, bytes) => {
+        try {
+            const { extractResumePdf } = require('./skills/resumePdf');
+            return { success: true, data: await extractResumePdf(bytes) };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
     ipcMain.handle('skills:create', async (event, input) => {
         try {
             const result = promptSkills.createSkill(storage.getPreferences().promptSkills, input);

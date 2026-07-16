@@ -131,6 +131,8 @@ export class HelpView extends LitElement {
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
             scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
+            toggleMinimize: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
+            toggleMaximize: isMac ? 'Cmd+Shift+X' : 'Ctrl+Shift+X',
         };
     }
 
@@ -149,6 +151,8 @@ export class HelpView extends LitElement {
             ['Move Window Left', this.keybinds.moveLeft],
             ['Move Window Right', this.keybinds.moveRight],
             ['Toggle Visibility', this.keybinds.toggleVisibility],
+            ['Minimize / Restore', this.keybinds.toggleMinimize],
+            ['Maximize / Restore', this.keybinds.toggleMaximize],
             ['Toggle Click-through', this.keybinds.toggleClickThrough],
             ['Ask Next Step', this.keybinds.nextStep],
             ['Previous Response', this.keybinds.previousResponse],

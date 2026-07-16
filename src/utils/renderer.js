@@ -121,6 +121,9 @@ const storage = {
     async resumeSync(resumeText) {
         return ipcRenderer.invoke('skills:resume-sync', resumeText);
     },
+    async extractResumePdf(bytes) {
+        return ipcRenderer.invoke('skills:extract-resume-pdf', bytes);
+    },
     async getPromptSkills() {
         const result = await ipcRenderer.invoke('skills:list');
         return result.success ? result.data : [];
@@ -177,6 +180,18 @@ const storage = {
 // Cache for preferences to avoid async calls in hot paths
 let preferencesCache = null;
 
+function buildUserContext(preferences) {
+    return [
+        ['Target role', preferences.targetRoleContext],
+        ['Job description', preferences.jobDescription],
+        ['Company / industry', preferences.companyContext],
+        ['Additional instructions', preferences.additionalContext || preferences.customPrompt],
+    ]
+        .filter(([, value]) => String(value || '').trim())
+        .map(([label, value]) => `${label}\n-----\n${String(value).trim()}\n-----`)
+        .join('\n\n');
+}
+
 async function loadPreferencesCache() {
     preferencesCache = await storage.getPreferences();
     return preferencesCache;
@@ -208,7 +223,7 @@ function arrayBufferToBase64(buffer) {
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     const apiKey = await storage.getApiKey();
     const prefs = await storage.getPreferences();
-    const success = await ipcRenderer.invoke('initialize-gemini', apiKey || '', prefs.customPrompt || '', profile, language);
+    const success = await ipcRenderer.invoke('initialize-gemini', apiKey || '', buildUserContext(prefs), profile, language);
     if (success) {
         shadowAI.setStatus('Live');
     } else {
@@ -222,7 +237,7 @@ async function initializeLocal(profile = 'interview') {
     const ollamaHost = prefs.ollamaHost || 'http://127.0.0.1:11434';
     const ollamaModel = prefs.ollamaModel || 'llama3.1';
     const whisperModel = prefs.whisperModel || 'Xenova/whisper-small';
-    const customPrompt = prefs.customPrompt || '';
+    const customPrompt = buildUserContext(prefs);
 
     const success = await ipcRenderer.invoke('initialize-local', ollamaHost, ollamaModel, whisperModel, profile, customPrompt);
     if (success) {
@@ -243,7 +258,7 @@ async function initializeCloud(profile = 'interview') {
     }
 
     const prefs = await storage.getPreferences();
-    const success = await ipcRenderer.invoke('initialize-cloud', token, profile, prefs.customPrompt || '');
+    const success = await ipcRenderer.invoke('initialize-cloud', token, profile, buildUserContext(prefs));
     if (success) {
         shadowAI.setStatus('Live');
         return true;
