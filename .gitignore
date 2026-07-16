@@ -65,6 +65,9 @@ test-results/
 # E2E test isolated config directories
 .test-config/
 
+# Python launcher log files
+logs/
+
 # dotenv environment variables file
 .env
 .env.test

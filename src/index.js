@@ -2,6 +2,7 @@ if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
 
+const fs = require('fs');
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
@@ -53,6 +54,12 @@ app.whenReady().then(async () => {
     setupGeminiIpcHandlers(geminiSessionRef);
     setupStorageIpcHandlers();
     setupGeneralIpcHandlers();
+
+    // Signal readiness to the Python launcher (written AFTER all setup completes)
+    const readyMarker = process.env.SHADOW_AI_READY_MARKER;
+    if (readyMarker) {
+        try { fs.writeFileSync(readyMarker, '', 'utf8'); } catch { /* best-effort */ }
+    }
 });
 
 app.on('window-all-closed', () => {

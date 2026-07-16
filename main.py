@@ -8,8 +8,49 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parent
+LOG_DIR = ROOT / "logs"
+READY_MARKER = "shadow-ai-ready"
+STARTUP_TIMEOUT = 12  # seconds to wait for the Electron window to signal readiness
+
+
+def cleanup_old_logs() -> None:
+    """Remove all but the 5 most recent launcher log files."""
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        logs = sorted(LOG_DIR.glob("launcher-*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in logs[5:]:
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def clear_readiness_marker() -> None:
+    marker = ROOT / READY_MARKER
+    try:
+        if marker.exists():
+            marker.unlink()
+    except OSError:
+        pass
+
+
+def wait_for_readiness() -> bool:
+    """Poll for the readiness marker file written by src/index.js on successful window creation."""
+    marker = ROOT / READY_MARKER
+    deadline = time.monotonic() + STARTUP_TIMEOUT
+    while time.monotonic() < deadline:
+        if marker.exists():
+            try:
+                marker.unlink()
+            except OSError:
+                pass
+            return True
+        time.sleep(0.3)
+    return False
+
+
 PROVIDERS = {
     "groq": "GROQ_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
@@ -51,10 +92,10 @@ def configured_providers() -> list[str]:
 
 
 def silent_mode_enabled() -> bool:
-    value = os.environ.get(SILENT_MODE_ENV, "true").strip().lower()
+    value = os.environ.get(SILENT_MODE_ENV, "false").strip().lower()
     if value not in {"true", "false"}:
-        print(f"WARNING: {SILENT_MODE_ENV} must be true or false; using true.", file=sys.stderr)
-        return True
+        print(f"WARNING: {SILENT_MODE_ENV} must be true or false; using false.", file=sys.stderr)
+        return False
     return value == "true"
 
 
@@ -359,16 +400,41 @@ def launch(args: argparse.Namespace) -> int:
     creationflags = 0
     if os.name == "nt":
         creationflags = subprocess.CREATE_NO_WINDOW if silent else subprocess.CREATE_NEW_CONSOLE
+
+    # Always redirect stderr to a rotating log file so startup errors are never lost
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / f"launcher-{time.strftime('%Y%m%d-%H%M%S')}.log"
+    stderr_target = open(log_path, "a", encoding="utf-8")
+
+    # Write a header so we can tell when a new launch begins
+    stderr_target.write(f"\n{'='*60}\nLaunch at {time.strftime('%Y-%m-%d %H:%M:%S')}\n{'='*60}\n")
+    stderr_target.flush()
+
+    # Clean up old logs (keep last 5)
+    cleanup_old_logs()
+
+    # Clear any stale readiness marker from a previous run
+    clear_readiness_marker()
+
     subprocess.Popen(
         command,
         cwd=ROOT,
-        env=os.environ.copy(),
+        env={**os.environ.copy(), "SHADOW_AI_READY_MARKER": str(ROOT / READY_MARKER)},
         creationflags=creationflags,
         stdout=subprocess.DEVNULL if silent else None,
-        stderr=subprocess.DEVNULL if silent else None,
+        stderr=stderr_target,
     )
-    print(f"Shadow AI started ({'silent' if silent else 'visible terminal'} mode)")
-    return 0
+
+    # Wait for the Electron app to signal readiness (up to STARTUP_TIMEOUT seconds)
+    ready = wait_for_readiness()
+    if ready:
+        print(f"Shadow AI started ({'silent' if silent else 'visible terminal'} mode)")
+        return 0
+    else:
+        # Check if the process already exited (fast-fail)
+        print("ERROR: Shadow AI did not start successfully.", file=sys.stderr)
+        print(f"       Check the log file for details: {log_path}", file=sys.stderr)
+        return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
