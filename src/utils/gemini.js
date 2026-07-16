@@ -700,6 +700,16 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                         const isInputTranscription = !!message.serverContent?.inputTranscription;
 
+                        // Reset answerFired if a new turn arrives and the answer stream has already
+                        // completed (i.e. _currentAnswerAbort is null). This handles the case where
+                        // generationComplete does not fire after sendToAnswerProvider finishes,
+                        // which would otherwise leave answerFired=true permanently, silencing all
+                        // future answers in the session.
+                        if (isInputTranscription && s.answerFired && !_currentAnswerAbort) {
+                            if (isDebug) console.log('[AnswerFired] Reset for new turn (generationComplete was not received)');
+                            s.answerFired = false;
+                        }
+
                         // Barge-in detection: if the user starts speaking while an answer is streaming,
                         // cancel the current answer stream and reset state for the new turn.
                         if (isInputTranscription && s.answerFired && !s.messageBuffer) {
