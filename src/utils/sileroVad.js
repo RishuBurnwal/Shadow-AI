@@ -7,6 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const ort = require('onnxruntime-node');
 const https = require('https');
 const { app } = require('electron');
@@ -20,6 +21,15 @@ const FRAME_SIZE = 512; // 32ms at 16kHz
 const SAMPLE_RATE = 16000;
 const THRESHOLD = 0.5; // Speech probability threshold
 const MIN_SPEECH_FRAMES = 3; // Consecutive speech frames to trigger "speech started"
+
+// Maximum number of redirects to follow when downloading the model.
+// Prevents infinite redirect loops from a misconfigured URL.
+const MAX_REDIRECTS = 5;
+
+// Expected SHA-256 hash of the Silero VAD v5.1 ONNX model.
+// Verified after download to detect corruption or man-in-the-middle tampering.
+// Hash computed from: https://github.com/snakers4/silero-vad/raw/v5.1/files/silero_vad.onnx
+const EXPECTED_SHA256 = 'd8398f012dc395a79ae8a97c20e19608041aebadddb2f18934164ae83b3dd8a4';
 
 // ── State ──
 
@@ -44,7 +54,12 @@ function getModelPath() {
 
 // ── Model Download ──
 
-function downloadModel(url, destPath) {
+function computeSha256(filePath) {
+    const data = fs.readFileSync(filePath);
+    return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function downloadModel(url, destPath, redirectCount = 0) {
     return new Promise((resolve, reject) => {
         const dir = path.dirname(destPath);
         if (!fs.existsSync(dir)) {
@@ -55,10 +70,15 @@ function downloadModel(url, destPath) {
         if (fs.existsSync(destPath)) {
             const stats = fs.statSync(destPath);
             if (stats.size > 100000) {
-                // ~1.7MB expected
-                console.log('[SileroVAD] Model already cached at', destPath);
-                resolve(destPath);
-                return;
+                // ~1.7MB expected — verify checksum
+                const actualHash = computeSha256(destPath);
+                if (actualHash === EXPECTED_SHA256) {
+                    console.log('[SileroVAD] Model already cached at', destPath);
+                    resolve(destPath);
+                    return;
+                }
+                console.warn('[SileroVAD] Cached model checksum mismatch (expected', EXPECTED_SHA256.slice(0, 12) + '...' + ', got', actualHash.slice(0, 12) + '...' + '). Re-downloading.');
+                fs.unlinkSync(destPath);
             }
         }
 
@@ -72,14 +92,21 @@ function downloadModel(url, destPath) {
                 // Handle redirects
                 if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
                     file.close();
-                    fs.unlinkSync(tempPath);
-                    downloadModel(response.headers.location, destPath).then(resolve).catch(reject);
+                    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+
+                    // Enforce redirect cap to prevent infinite loops
+                    if (redirectCount >= MAX_REDIRECTS) {
+                        reject(new Error(`Too many redirects (${redirectCount + 1}), exceeded limit of ${MAX_REDIRECTS}`));
+                        return;
+                    }
+
+                    downloadModel(response.headers.location, destPath, redirectCount + 1).then(resolve).catch(reject);
                     return;
                 }
 
                 if (response.statusCode !== 200) {
                     file.close();
-                    fs.unlinkSync(tempPath);
+                    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
                     reject(new Error(`Download failed with status ${response.statusCode}`));
                     return;
                 }
@@ -88,8 +115,19 @@ function downloadModel(url, destPath) {
 
                 file.on('finish', () => {
                     file.close();
+
+                    // Verify SHA-256 checksum before accepting the downloaded file
+                    const actualHash = computeSha256(tempPath);
+                    if (actualHash !== EXPECTED_SHA256) {
+                        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+                        reject(new Error(
+                            `Downloaded model checksum mismatch. Expected ${EXPECTED_SHA256.slice(0, 12)}..., got ${actualHash.slice(0, 12)}...`
+                        ));
+                        return;
+                    }
+
                     fs.renameSync(tempPath, destPath);
-                    console.log('[SileroVAD] Model downloaded successfully');
+                    console.log('[SileroVAD] Model downloaded and verified successfully');
                     resolve(destPath);
                 });
             })
