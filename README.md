@@ -18,7 +18,16 @@ Use a single `Shadow-AI` checkout as the canonical workspace. The launcher, upda
 - Named sessions with notes and context, editable history entries, individual deletion, and clear-all history.
 - Manual prompts, screen analysis, markdown responses, shortcuts, and optional local Ollama/Whisper mode.
 - Configurable complete-question wait (default 1.5 seconds / 1500 ms) that resets on resumed speech before generating an answer.
+- Automatic and Manual interview response modes with a persisted per-user choice.
+- Editable manual question review: recognized speech waits until the user verifies or edits it and clicks **OK**.
+- Each response pairs the recognized **Interviewer** question with speaking guidance for the **Candidate**.
 - Editable prompt skills with six starter presets; enable multiple skills together from **AI & Skills → Skills**.
+
+### Interview response modes
+
+- **Automatic:** after speech ends, Shadow AI waits for the configured complete-question delay. New speech resets the timer and joins the same question. The final question appears as **Interviewer**, followed by the streamed **Candidate** answer.
+- **Manual:** speech is transcribed but not processed. Review or edit the recognized question in the response tab, then click **OK**. Only the approved text is processed. Switching to Manual while an automatic timer is pending prevents that pending answer.
+- The selected mode persists across launches. Manual prompts and screen analysis continue to work independently.
 
 ### Using skills
 
@@ -42,8 +51,8 @@ Skills can be combined. For example, enable **Screen Analyst** and **Instructor 
 
 | Measure                      | Completion | Meaning                                                                                                                             |
 | ---------------------------- | ---------: | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Original engineering audit   |   **100%** | All 17 identified engineering findings are implemented or verified.                                                               |
-| Fixing plan                  |   **100%** | All 12 planned implementation items are complete.                                                                                  |
+| Original engineering audit   |   **100%** | All 17 identified engineering findings are implemented or verified.                                                                 |
+| Fixing plan                  |   **100%** | All 12 planned implementation items are complete.                                                                                   |
 | Windows feature readiness    |   **100%** | Build, launch, security, local STT, physical microphone, system loopback, tests, packaging, and editable prompt skills pass.        |
 | Overall production readiness |    **93%** | Windows is release-tested; authenticated hosted-provider, GPL release governance, and macOS/Linux validation remain external gates. |
 
@@ -91,6 +100,9 @@ The remaining 7% is external validation and release governance, not a known brok
 - [x] Realtek speaker system loopback captures a generated 440 Hz test signal (`peak > 0`).
 - [x] Prompt skills support add, edit, rename, enable/disable, and delete; enabled prompts are injected into AI requests.
 - [x] Relevant memory facts and system-prompt exports are connected and behavior-tested.
+- [x] Interview speech-end generates an answer without empty transcription metadata cancelling the configured delay.
+- [x] Automatic/Manual selection persists; Manual mode holds an editable question until explicit approval.
+- [x] Response cards display the recognized **Interviewer** question and streamed **Candidate** answer together.
 
 ### Remaining checklist and known limitations
 
@@ -220,6 +232,15 @@ The yellow and green header buttons use the same minimize/restore and maximize/r
 
 Local mode uses Ollama for responses and `@huggingface/transformers` Whisper models for transcription. Configure the Ollama host/model in the app. The first transcription session may be slower while model assets download.
 
+### Speech-to-text architecture
+
+| Mode                    | Transcription location                                        | Internet requirement                                                                  | Model dependency                                                                |
+| ----------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| BYOK / hosted interview | Gemini Live API                                               | Required during the session                                                           | Depends on continued compatible Gemini Live API/model access.                   |
+| Local                   | This computer through ONNX Runtime and `Xenova/whisper-small` | Required for the first model download; cached transcription can run offline afterward | Supported revisions are pinned and important ONNX weights are SHA-256 verified. |
+
+Local mode does not upload audio for transcription. For a completely local workflow, use the cached Whisper model for speech-to-text and a locally installed Ollama model for answers. If the configured Whisper model becomes unavailable upstream, an already downloaded verified cache continues to work; a new installation without that cache cannot download the missing model. Hosted transcription can similarly be affected by a future Gemini Live API or model retirement.
+
 ## Updating safely
 
 Normal launch (option `1`) checks automatically; option `5` runs it manually. The updater verifies the expected `RishuBurnwal/Shadow-AI` origin, refuses to overwrite tracked local changes, compares local and remote commit hashes, lists changed files, applies only a fast-forward update, verifies the resulting commit and tracked-file hashes, installs the exact lockfile dependencies, validates the app, packages it, and restarts only after validation succeeds. `.env` remains untouched.
@@ -235,7 +256,7 @@ npm start
 npm run package
 ```
 
-The tracked verification suites cover audio and transcription behavior, persistence, prompt skills, providers, security contracts, window controls, resume handling, and complete Electron user journeys. Generated reports remain ignored.
+The tracked verification suites currently include 94 unit/contract checks and 26 Electron end-to-end journeys. They cover audio and transcription behavior, automatic/manual question approval, persistence, prompt skills, providers, security contracts, window controls, resume handling, and complete desktop journeys. Generated reports remain ignored.
 
 ## Project structure
 
@@ -275,6 +296,8 @@ Shadow-AI/
 **App does not start:** Choose launcher option `1` to repair setup or `8` for safe diagnostics. Confirm Node.js and npm are on `PATH`.
 
 **Local mode cannot connect:** Start Ollama, verify its configured host (default `http://127.0.0.1:11434`), and pull the selected model.
+
+**A recognized question does not generate immediately:** Check the response mode. In Manual mode, review or edit the interviewer question and click **OK**. In Automatic mode, wait for the configured complete-question delay; resumed speech restarts it.
 
 **Screen/audio capture fails:** Enable operating-system screen-recording, microphone, and system-audio permissions, then restart the app.
 
