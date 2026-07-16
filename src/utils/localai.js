@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { getSystemPrompt } = require('./prompts');
+const { createTurnDebouncer } = require('./turnDebouncer');
 const { initializeSileroVAD, VadProcessor, isAvailable, FRAME_SIZE } = require('./sileroVad');
 
 // Lazy load gemini to avoid requiring 'electron' at module load time.
@@ -49,6 +50,7 @@ const MAX_ROLLING_AUDIO_MS = 5000;
 const MAX_ROLLING_AUDIO_BYTES = (16000 * 2 * MAX_ROLLING_AUDIO_MS) / 1000;
 let lastRollingTranscriptionTime = 0;
 let _isTranscribing = false; // In-flight guard to prevent concurrent transcribeAudio() calls
+const answerDebouncer = createTurnDebouncer();
 let answerRequestedAt = 0;
 
 // Cached language preference for Whisper transcription (set in initializeLocalSession)
@@ -191,6 +193,7 @@ async function processVAD(pcm16kBuffer) {
     }
 
     if (isVoice) {
+        answerDebouncer.interrupt();
         speechFrameCount++;
         silenceFrameCount = 0;
 
@@ -410,9 +413,15 @@ async function handleSpeechEnd(audioData) {
         return;
     }
 
-    sendToRenderer('update-status', 'Generating response...');
-    answerRequestedAt = Date.now();
-    await sendToOllama(transcription);
+    const { getPreferences } = require('../storage');
+    answerDebouncer.setDelay(getPreferences().responseDelayMs);
+    sendToRenderer('update-status', 'Waiting for complete question...');
+    answerDebouncer.schedule(transcription, async completeTranscription => {
+        if (!isLocalActive) return;
+        sendToRenderer('update-status', 'Generating response...');
+        answerRequestedAt = Date.now();
+        await sendToOllama(completeTranscription);
+    });
 }
 
 // ── Ollama Chat ──
@@ -593,6 +602,7 @@ function processLocalAudio(audioChunk, mimeType = 'audio/pcm;rate=24000') {
 }
 
 function closeLocalSession() {
+    answerDebouncer.clear();
     console.log('[LocalAI] Closing local session');
     isLocalActive = false;
     isSpeaking = false;

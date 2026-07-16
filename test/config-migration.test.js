@@ -136,6 +136,7 @@ test('config migration — preferences migration adds missing defaults', () => {
     assert.equal(typeof prefs.sessionName, 'string'); // default filled
     assert.equal(typeof prefs.backgroundTransparency, 'number'); // default filled
     assert.equal(prefs.vadSilenceMs, 500);
+    assert.equal(prefs.responseDelayMs, 1500);
 });
 
 test('config migration — clearAllData wipes everything and reinitializes', () => {

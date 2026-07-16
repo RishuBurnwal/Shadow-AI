@@ -184,6 +184,7 @@ export class CustomizeView extends LitElement {
         googleSearchEnabled: { type: Boolean },
         privacyMode: { type: Boolean },
         vadSilenceMs: { type: Number },
+        responseDelayMs: { type: Number },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         theme: { type: String },
@@ -213,6 +214,7 @@ export class CustomizeView extends LitElement {
         this.googleSearchEnabled = true;
         this.privacyMode = false;
         this.vadSilenceMs = 500;
+        this.responseDelayMs = 1500;
         this.isClearing = false;
         this.isRestoring = false;
         this.clearStatusMessage = '';
@@ -235,6 +237,7 @@ export class CustomizeView extends LitElement {
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
             this.privacyMode = prefs.privacyMode ?? false;
             this.vadSilenceMs = prefs.vadSilenceMs ?? 500;
+            this.responseDelayMs = prefs.responseDelayMs ?? 1500;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
@@ -375,6 +378,13 @@ export class CustomizeView extends LitElement {
         this.requestUpdate();
     }
 
+    async handleResponseDelayChange(e) {
+        const seconds = Math.min(10, Math.max(0, Number(e.target.value) || 0));
+        this.responseDelayMs = Math.round(seconds * 1000);
+        await shadowAI.storage.updatePreference('responseDelayMs', this.responseDelayMs);
+        this.requestUpdate();
+    }
+
     async handleThemeChange(e) {
         this.theme = e.target.value;
         await shadowAI.theme.save(this.theme);
@@ -510,6 +520,8 @@ export class CustomizeView extends LitElement {
                 backgroundTransparency: 0.8,
                 googleSearchEnabled: false,
                 privacyMode: false,
+                vadSilenceMs: 500,
+                responseDelayMs: 1500,
                 theme: 'dark',
             };
             for (const [key, value] of Object.entries(defaults)) {
@@ -532,6 +544,8 @@ export class CustomizeView extends LitElement {
             this.fontSize = defaults.fontSize;
             this.backgroundTransparency = defaults.backgroundTransparency;
             this.googleSearchEnabled = defaults.googleSearchEnabled;
+            this.vadSilenceMs = defaults.vadSilenceMs;
+            this.responseDelayMs = defaults.responseDelayMs;
             this.customPrompt = defaults.customPrompt;
             this.theme = defaults.theme;
 
@@ -630,6 +644,22 @@ export class CustomizeView extends LitElement {
                             .value=${this.vadSilenceMs}
                             @input=${this.handleVadSilenceChange}
                         />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Wait before generating answer</label>
+                        <input
+                            class="control"
+                            type="number"
+                            min="0"
+                            max="10"
+                            step="0.1"
+                            .value=${this.responseDelayMs / 1000}
+                            @change=${this.handleResponseDelayChange}
+                        />
+                        <div class="form-help">
+                            Seconds to wait after speech ends. New speech resets the timer and joins the same question. Current:
+                            ${this.responseDelayMs} ms.
+                        </div>
                     </div>
                 </div>
             </section>

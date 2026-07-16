@@ -17,6 +17,7 @@ Use a single `Shadow-AI` checkout as the canonical workspace. The launcher, upda
 - Independent header controls for background opacity, AI-response text opacity, AI-response color, and passthrough.
 - Named sessions with notes and context, editable history entries, individual deletion, and clear-all history.
 - Manual prompts, screen analysis, markdown responses, shortcuts, and optional local Ollama/Whisper mode.
+- Configurable complete-question wait (default 1.5 seconds / 1500 ms) that resets on resumed speech before generating an answer.
 - Hash-based, fast-forward-only GitHub updater that rebuilds and restarts after validation.
 
 ## Current completion status

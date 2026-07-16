@@ -133,6 +133,20 @@ test.describe('Shadow AI', () => {
         await goHome();
     });
 
+    test('complete-question delay defaults to 1.5 seconds and persists in milliseconds', async () => {
+        await win.evaluate(() => document.querySelector('shadow-ai-app')?.navigate?.('customize'));
+        await win.waitForTimeout(500);
+        const initial = await win.evaluate(() => {
+            const view = document.querySelector('shadow-ai-app')?.shadowRoot?.querySelector('customize-view');
+            return { text: view?.shadowRoot?.textContent || '', value: view?.responseDelayMs };
+        });
+        expect(initial.text).toContain('Wait before generating answer');
+        expect(initial.value).toBe(1500);
+        await win.evaluate(async () => window.shadowAI.storage.updatePreference('responseDelayMs', 2300));
+        expect((await win.evaluate(async () => window.shadowAI.storage.getPreferences())).responseDelayMs).toBe(2300);
+        await goHome();
+    });
+
     test('memory view renders', async () => {
         await win.evaluate(() => document.querySelector('shadow-ai-app')?.navigate?.('memory'));
         await win.waitForTimeout(700);

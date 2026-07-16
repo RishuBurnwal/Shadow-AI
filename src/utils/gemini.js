@@ -18,6 +18,7 @@ const {
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const { getConfiguredProviders, streamWithFallback, markProviderSuccess, markProviderFailure } = require('./providerRouter');
 const { syncProviderEnvironment } = require('./providerEnv');
+const { createTurnDebouncer } = require('./turnDebouncer');
 
 // Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
 let _localai = null;
@@ -31,6 +32,7 @@ let currentProviderMode = 'byok';
 
 // Session-scoped state (replaces module-level globals for B3)
 let currentSession = null;
+const answerDebouncer = createTurnDebouncer();
 const TURN_STATE = Object.freeze({ IDLE: 'IDLE', LISTENING: 'LISTENING', AWAITING_ANSWER: 'AWAITING_ANSWER', STREAMING: 'STREAMING' });
 
 function createSessionState() {
@@ -737,6 +739,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             cancelCurrentAnswer();
                             sendToRenderer('update-status', 'Listening... (interrupted)');
                         }
+                        if (isInputTranscription) answerDebouncer.interrupt();
 
                         if (message.serverContent?.inputTranscription?.results) {
                             const formatted = formatSpeakerResults(message.serverContent.inputTranscription.results);
@@ -772,11 +775,18 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             if (transcription) {
                                 logLatency('cloud', 'speech_end_to_transcription_ready', Date.now() - speechEndedAt);
                                 sendToRenderer('interim-transcription', { text: finalText, isFinal: true });
-                                s.answerRequestedAt = Date.now();
-                                transitionTurn(s, 'ANSWER_STARTED');
-                                Promise.resolve(sendToAnswerProvider(transcription)).finally(() => transitionTurn(s, 'ANSWER_FINISHED'));
+                                answerDebouncer.setDelay(getPreferences().responseDelayMs);
+                                sendToRenderer('update-status', 'Waiting for complete question...');
+                                answerDebouncer.schedule(transcription, completeTranscription => {
+                                    s.answerRequestedAt = Date.now();
+                                    transitionTurn(s, 'ANSWER_STARTED');
+                                    return Promise.resolve(sendToAnswerProvider(completeTranscription)).finally(() =>
+                                        transitionTurn(s, 'ANSWER_FINISHED')
+                                    );
+                                });
+                            } else {
+                                sendToRenderer('update-status', 'Listening...');
                             }
-                            sendToRenderer('update-status', 'Listening...');
                         }
                     },
                     onerror: function (e) {
@@ -1320,6 +1330,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('close-session', async event => {
         try {
+            answerDebouncer.clear();
             // Generate session summary + extract memory facts (non-blocking, fire-and-forget)
             if (conversationHistory.length >= 2) {
                 const history = conversationHistory;

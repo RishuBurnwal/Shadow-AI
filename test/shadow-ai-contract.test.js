@@ -248,6 +248,21 @@ test('local VAD silence timeout is persisted and exposed in Settings', () => {
     assert.match(indexSource, /setVadSilenceMs\(value\)/);
 });
 
+test('answer generation waits for a configurable complete-question delay', () => {
+    const storageSource = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
+    const settingsSource = fs.readFileSync(path.join(root, 'src/components/views/CustomizeView.js'), 'utf8');
+    const localSource = fs.readFileSync(path.join(root, 'src/utils/localai.js'), 'utf8');
+    const cloudSource = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
+
+    assert.match(storageSource, /responseDelayMs:\s*1500/);
+    assert.match(settingsSource, /Wait before generating answer/);
+    assert.match(settingsSource, /updatePreference\('responseDelayMs'/);
+    assert.match(localSource, /answerDebouncer\.schedule\(transcription/);
+    assert.match(cloudSource, /answerDebouncer\.schedule\(transcription/);
+    assert.match(localSource, /answerDebouncer\.interrupt\(\)/);
+    assert.match(cloudSource, /answerDebouncer\.interrupt\(\)/);
+});
+
 test('custom skills are persisted prompt instructions with complete CRUD UI', () => {
     const registrySource = fs.readFileSync(path.join(root, 'src/skills/skillRegistry.js'), 'utf8');
     const viewSource = fs.readFileSync(path.join(root, 'src/components/views/AICustomizeView.js'), 'utf8');

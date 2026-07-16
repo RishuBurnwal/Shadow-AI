@@ -46,6 +46,7 @@ const DEFAULT_PREFERENCES = {
     ollamaModel: 'llama3.1',
     whisperModel: 'Xenova/whisper-small',
     vadSilenceMs: 500,
+    responseDelayMs: 1500,
     privacyMode: false,
     promptSkills: [],
 };
