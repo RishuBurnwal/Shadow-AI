@@ -27,7 +27,17 @@ Use a single `Shadow-AI` checkout as the canonical workspace. The launcher, upda
 
 - **Automatic:** after speech ends, Shadow AI waits for the configured complete-question delay. New speech resets the timer and joins the same question. The final question appears as **Interviewer**, followed by the streamed **Candidate** answer.
 - **Manual:** speech is transcribed but not processed. Review or edit the recognized question in the response tab, then click **OK**. Only the approved text is processed. Switching to Manual while an automatic timer is pending prevents that pending answer.
+- Switch modes from the **Automatic/Manual** button in the passthrough-safe header. Selecting Manual turns Passthrough off so the question editor and **OK** button remain clickable.
 - The selected mode persists across launches. Manual prompts and screen analysis continue to work independently.
+
+### Why there are two delay settings
+
+| Setting                          | Default               | Purpose                                                                                                                                                         |
+| -------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Speech-end detection silence** | 500 ms                | Silence required before speech recognition decides the interviewer has stopped speaking and finalizes the transcript. It does not delay the AI answer.          |
+| **Automatic answer delay**       | 1.5 seconds / 1500 ms | Extra wait after the final transcript is ready before answer generation starts. Resumed speech resets it. It is ignored in Manual mode, which waits for **OK**. |
+
+The settings use different units for readability, but both are stored internally in milliseconds. They control separate stages and are not added as duplicate response delays.
 
 ### Using skills
 
@@ -256,7 +266,7 @@ npm start
 npm run package
 ```
 
-The tracked verification suites currently include 94 unit/contract checks and 26 Electron end-to-end journeys. They cover audio and transcription behavior, automatic/manual question approval, persistence, prompt skills, providers, security contracts, window controls, resume handling, and complete desktop journeys. Generated reports remain ignored.
+The tracked verification suites currently include 94 unit/contract checks and 27 Electron end-to-end journeys. They cover audio and transcription behavior, the passthrough-safe Automatic/Manual switch, question approval, persistence, prompt skills, providers, security contracts, window controls, resume handling, and complete desktop journeys. Generated reports remain ignored.
 
 ## Project structure
 

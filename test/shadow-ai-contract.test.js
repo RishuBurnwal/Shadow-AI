@@ -167,9 +167,9 @@ test('manual response mode holds an editable recognized question until approval'
     const geminiSource = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
     const localSource = fs.readFileSync(path.join(root, 'src/utils/localai.js'), 'utf8');
     assert.match(appSource, /updatePreference\('automaticResponse', enabled\)/);
+    assert.match(appSource, /Toggle automatic or manual interview response mode/);
+    assert.match(appSource, /if \(!enabled && this\._isClickThrough\) await this\.togglePassthrough\(\)/);
     assert.match(assistantSource, /aria-label="Review interviewer question"/);
-    assert.match(assistantSource, />\s*Automatic\s*<\/button>/);
-    assert.match(assistantSource, />\s*Manual\s*<\/button>/);
     assert.match(geminiSource, /if \(!preferences\.automaticResponse\)/);
     assert.match(localSource, /if \(!preferences\.automaticResponse\)/);
 });
@@ -301,7 +301,8 @@ test('answer generation waits for a configurable complete-question delay', () =>
     const cloudSource = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
 
     assert.match(storageSource, /responseDelayMs:\s*1500/);
-    assert.match(settingsSource, /Wait before generating answer/);
+    assert.match(settingsSource, /Automatic answer delay \(seconds\)/);
+    assert.match(settingsSource, /Speech-end detection silence/);
     assert.match(settingsSource, /updatePreference\('responseDelayMs'/);
     assert.match(localSource, /answerDebouncer\.schedule\(transcription/);
     assert.match(cloudSource, /answerDebouncer\.schedule\(transcription/);

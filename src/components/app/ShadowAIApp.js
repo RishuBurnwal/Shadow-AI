@@ -1010,6 +1010,8 @@ export class ShadowAIApp extends LitElement {
     async handleAutomaticResponseChange(enabled) {
         this.automaticResponse = enabled;
         await shadowAI.storage.updatePreference('automaticResponse', enabled);
+        if (!enabled && this._isClickThrough) await this.togglePassthrough();
+        this.requestUpdate();
     }
 
     async handleApprovedQuestion(question) {
@@ -1110,7 +1112,6 @@ export class ShadowAIApp extends LitElement {
                         .responseTextColor=${this.responseTextColor}
                         .interimTranscription=${this.interimTranscription}
                         .automaticResponse=${this.automaticResponse}
-                        .onAutomaticResponseChange=${enabled => this.handleAutomaticResponseChange(enabled)}
                         .onApproveQuestion=${question => this.handleApprovedQuestion(question)}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
@@ -1385,6 +1386,23 @@ export class ShadowAIApp extends LitElement {
                             @input=${event => this.handleResponseTextOpacityChange(event.target.value)}
                         />
                     </label>
+                    ${
+                        isLive
+                            ? html`<button
+                                  class="passthrough-button ${this.automaticResponse ? 'active' : ''}"
+                                  aria-label="Toggle automatic or manual interview response mode"
+                                  aria-pressed=${this.automaticResponse}
+                                  title=${
+                                      this.automaticResponse
+                                          ? 'Automatic: answer after the configured response delay'
+                                          : 'Manual: review or edit the question, then click OK'
+                                  }
+                                  @click=${() => this.handleAutomaticResponseChange(!this.automaticResponse)}
+                              >
+                                  ${this.automaticResponse ? 'Automatic' : 'Manual'}
+                              </button>`
+                            : ''
+                    }
                     <button
                         class="passthrough-button ${this._isClickThrough ? 'active' : ''}"
                         aria-pressed=${this._isClickThrough}

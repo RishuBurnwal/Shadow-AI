@@ -140,10 +140,27 @@ test.describe('Shadow AI', () => {
             const view = document.querySelector('shadow-ai-app')?.shadowRoot?.querySelector('customize-view');
             return { text: view?.shadowRoot?.textContent || '', value: view?.responseDelayMs };
         });
-        expect(initial.text).toContain('Wait before generating answer');
+        expect(initial.text).toContain('Automatic answer delay');
+        expect(initial.text).toContain('Speech-end detection silence');
         expect(initial.value).toBe(1500);
         await win.evaluate(async () => window.shadowAI.storage.updatePreference('responseDelayMs', 2300));
         expect((await win.evaluate(async () => window.shadowAI.storage.getPreferences())).responseDelayMs).toBe(2300);
+        await goHome();
+    });
+
+    test('passthrough-safe header switches and persists response mode', async () => {
+        await win.evaluate(async () => {
+            await window.shadowAI.storage.updatePreference('automaticResponse', true);
+            const app = document.querySelector('shadow-ai-app');
+            app.automaticResponse = true;
+            app.navigate('assistant');
+        });
+        const toggle = win.locator('shadow-ai-app').locator('button[aria-label="Toggle automatic or manual interview response mode"]');
+        await expect(toggle).toHaveText(/Automatic/);
+        await toggle.click();
+        await expect(toggle).toHaveText(/Manual/);
+        expect((await win.evaluate(async () => window.shadowAI.storage.getPreferences())).automaticResponse).toBe(false);
+        await toggle.click();
         await goHome();
     });
 

@@ -274,8 +274,7 @@ export class AssistantView extends LitElement {
             padding: var(--space-xs);
         }
 
-        .approve-btn,
-        .response-mode button {
+        .approve-btn {
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
             background: var(--bg-elevated);
@@ -284,17 +283,9 @@ export class AssistantView extends LitElement {
             padding: var(--space-xs) var(--space-sm);
         }
 
-        .approve-btn,
-        .response-mode button.active {
+        .approve-btn {
             border-color: var(--accent);
             color: var(--text-primary);
-        }
-
-        .response-mode {
-            display: flex;
-            justify-content: flex-end;
-            gap: var(--space-xs);
-            padding: var(--space-xs) var(--space-md) 0;
         }
 
         /* ── Bottom input bar ── */
@@ -403,7 +394,6 @@ export class AssistantView extends LitElement {
         responseTextColor: { type: String },
         interimTranscription: { type: Object },
         automaticResponse: { type: Boolean },
-        onAutomaticResponseChange: { type: Function },
         onApproveQuestion: { type: Function },
         reviewQuestion: { type: String, state: true },
         isAnalyzing: { type: Boolean, state: true },
@@ -418,7 +408,6 @@ export class AssistantView extends LitElement {
         this.responseTextOpacity = 1;
         this.responseTextColor = '#f5f5f5';
         this.automaticResponse = true;
-        this.onAutomaticResponseChange = () => {};
         this.onApproveQuestion = () => {};
         this.reviewQuestion = '';
         this.isAnalyzing = false;
@@ -863,23 +852,6 @@ export class AssistantView extends LitElement {
                       `
                     : ''
             }
-
-            <div class="response-mode">
-                <button
-                    class=${this.automaticResponse ? 'active' : ''}
-                    @click=${() => this.onAutomaticResponseChange(true)}
-                    title="Generate automatically after the configured delay"
-                >
-                    Automatic
-                </button>
-                <button
-                    class=${!this.automaticResponse ? 'active' : ''}
-                    @click=${() => this.onAutomaticResponseChange(false)}
-                    title="Review or edit each recognized question before answering"
-                >
-                    Manual
-                </button>
-            </div>
 
             <div class="input-bar">
                 <div class="input-bar-inner">

@@ -632,7 +632,7 @@ export class CustomizeView extends LitElement {
                     </div>
                     <div class="form-group slider-wrap">
                         <div class="slider-header">
-                            <label class="form-label">End speech after silence</label>
+                            <label class="form-label">Speech-end detection silence</label>
                             <span class="slider-value">${this.vadSilenceMs} ms</span>
                         </div>
                         <input
@@ -644,9 +644,13 @@ export class CustomizeView extends LitElement {
                             .value=${this.vadSilenceMs}
                             @input=${this.handleVadSilenceChange}
                         />
+                        <div class="form-help">
+                            How long continuous silence must last before speech recognition marks the interviewer as finished. This controls
+                            transcription boundaries, not answer generation.
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Wait before generating answer</label>
+                        <label class="form-label">Automatic answer delay (seconds)</label>
                         <input
                             class="control"
                             type="number"
@@ -657,8 +661,8 @@ export class CustomizeView extends LitElement {
                             @change=${this.handleResponseDelayChange}
                         />
                         <div class="form-help">
-                            Seconds to wait after speech ends. New speech resets the timer and joins the same question. Current:
-                            ${this.responseDelayMs} ms.
+                            Used only in Automatic mode after a final transcript is ready. New speech resets this timer and joins the same question.
+                            In Manual mode there is no timer; generation waits for OK. Current: ${this.responseDelayMs} ms.
                         </div>
                     </div>
                 </div>
