@@ -1,4 +1,7 @@
 const { Ollama } = require('ollama');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { getSystemPrompt } = require('./prompts');
 const { initializeSileroVAD, VadProcessor, isAvailable, FRAME_SIZE } = require('./sileroVad');
 
@@ -42,11 +45,58 @@ let sileroVad = null;
 // Rolling-window transcription state
 let rollingTranscriptionInterval = null;
 const ROLLING_WINDOW_MS = 2000; // Transcribe partial audio every 2s during speech
+const MAX_ROLLING_AUDIO_MS = 5000;
+const MAX_ROLLING_AUDIO_BYTES = (16000 * 2 * MAX_ROLLING_AUDIO_MS) / 1000;
 let lastRollingTranscriptionTime = 0;
 let _isTranscribing = false; // In-flight guard to prevent concurrent transcribeAudio() calls
+let answerRequestedAt = 0;
 
 // Cached language preference for Whisper transcription (set in initializeLocalSession)
 let currentWhisperLanguage = 'en';
+const WHISPER_REVISIONS = Object.freeze({
+    'Xenova/whisper-tiny': '5332fcc35e32a33b86612b9a57a89be7906102b1',
+    'Xenova/whisper-base': '64da57285918e20ea79ea5c88eed7197933abaa8',
+    'Xenova/whisper-small': '2d67713f236afa48a18992566e7647f6ca848e13',
+    'Xenova/whisper-medium': '8c5b90880ab9f79487ab33613413431bf661d595',
+});
+const WHISPER_ONNX_HASHES = Object.freeze({
+    'Xenova/whisper-tiny': {
+        'onnx/decoder_model_merged_quantized.onnx': '6c0c125986b007d2e3734bec84c18bda0152071b90b87fadac6d7764499927a0',
+        'onnx/encoder_model_quantized.onnx': 'fd9d995b9dcb0520f0dbf6cf68651af639fc385f594d9d876e69ca2802dc438e',
+    },
+    'Xenova/whisper-base': {
+        'onnx/decoder_model_merged_quantized.onnx': 'a6beb6baabb66f00b6a686d828c95ffca6146d51900cbad0266cad38f64cf861',
+        'onnx/encoder_model_quantized.onnx': '3e345e977b55620a37c0c2b2af0644e019afdfad562dcf71eb929bb7274285f9',
+    },
+    'Xenova/whisper-small': {
+        'onnx/decoder_model_merged_quantized.onnx': 'fcfc6100dc7339e7507e10f8b274350be7c4f8d8b575f0293f94cc0e156d6d24',
+        'onnx/encoder_model_quantized.onnx': '969f5ac12974340386bf7a02ea6626003e5e2dee396ffc6ab0eec282bf55ba06',
+    },
+    'Xenova/whisper-medium': {
+        'onnx/decoder_model_merged_quantized.onnx': '2cdd6d06ebdf9d993d21117bfeeb7e9b399521b7766d3df77c54a85d6dcf3c08',
+        'onnx/encoder_model_quantized.onnx': '7d6b4a00e441271646327f8a71b6e1bd1a305013cd914b51ddd76919c59ee3af',
+    },
+});
+
+function sha256(data) {
+    return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function verifyWhisperCache(cacheDir, modelName, revision) {
+    for (const [file, expected] of Object.entries(WHISPER_ONNX_HASHES[modelName] || {})) {
+        const cached = path.join(cacheDir, modelName, revision, ...file.split('/'));
+        if (fs.existsSync(cached) && sha256(fs.readFileSync(cached)) !== expected) fs.unlinkSync(cached);
+    }
+}
+
+function findWhisperAsset(url) {
+    const pathname = decodeURIComponent(new URL(url).pathname);
+    for (const [model, files] of Object.entries(WHISPER_ONNX_HASHES)) {
+        if (!pathname.includes(`/${model}/`)) continue;
+        for (const [file, expected] of Object.entries(files)) if (pathname.endsWith(`/${file}`)) return { expected, file };
+    }
+    return null;
+}
 
 // VAD configuration
 // Silence frames reduced from 15→5 (500ms vs 1500ms) now that Silero VAD provides robust detection
@@ -57,6 +107,16 @@ const VAD_MODES = {
     VERY_AGGRESSIVE: { energyThreshold: 0.02, speechFramesRequired: 2, silenceFramesRequired: 5 },
 };
 let vadConfig = VAD_MODES.VERY_AGGRESSIVE;
+
+function setVadSilenceMs(value) {
+    const milliseconds = Math.min(1200, Math.max(300, Number(value) || 500));
+    vadConfig = { ...VAD_MODES.VERY_AGGRESSIVE, silenceFramesRequired: Math.round(milliseconds / 100) };
+    return milliseconds;
+}
+
+function getRollingAudio(audio) {
+    return audio.subarray(Math.max(0, audio.length - MAX_ROLLING_AUDIO_BYTES));
+}
 
 // Audio resampling buffer
 let resampleRemainder = Buffer.alloc(0);
@@ -107,7 +167,7 @@ function calculateRMS(pcm16Buffer) {
 async function processVAD(pcm16kBuffer) {
     const rms = calculateRMS(pcm16kBuffer);
 
-    // Stage 1: RMS pre-filter — skip expensive Silero inference on obvious silence
+    // Stage 1 gates the Silero classifier below; tune both thresholds together.
     const isLoud = rms > vadConfig.energyThreshold;
 
     // Stage 2: If Silero VAD is available, use it for robust classification
@@ -184,8 +244,7 @@ function startRollingTranscription() {
         if (now - lastRollingTranscriptionTime < ROLLING_WINDOW_MS) return;
         lastRollingTranscriptionTime = now;
 
-        // Concatenate audio accumulated so far
-        const audioSoFar = Buffer.concat(speechBuffers);
+        const audioSoFar = getRollingAudio(Buffer.concat(speechBuffers));
         if (audioSoFar.length < 32000) return; // Need at least ~1s of audio
 
         _isTranscribing = true;
@@ -226,12 +285,24 @@ async function loadWhisperPipeline(modelName) {
     sendToRenderer('update-status', 'Loading Whisper model (first time may take a while)...');
 
     try {
+        const revision = WHISPER_REVISIONS[modelName] || process.env.WHISPER_MODEL_REVISION;
+        if (!revision) throw new Error(`Whisper model ${modelName} has no pinned revision`);
         // Dynamic import for ESM module
         const { pipeline, env } = await import('@huggingface/transformers');
         // Cache models outside the asar archive so ONNX runtime can load them
         const { app } = require('electron');
         const path = require('path');
         env.cacheDir = path.join(app.getPath('userData'), 'whisper-models');
+        verifyWhisperCache(env.cacheDir, modelName, revision);
+        const defaultFetch = env.fetch;
+        env.fetch = async (...args) => {
+            const response = await defaultFetch(...args);
+            const asset = findWhisperAsset(response.url || String(args[0]));
+            if (!asset || !response.ok) return response;
+            const bytes = await response.arrayBuffer();
+            if (sha256(Buffer.from(bytes)) !== asset.expected) throw new Error(`Whisper model checksum failed: ${asset.file}`);
+            return new Response(bytes, { status: response.status, statusText: response.statusText, headers: response.headers });
+        };
 
         // Attempt WebGPU backend first; fall back to CPU if unavailable
         // This is explicitly tried and logged so the user knows which backend is in use
@@ -241,6 +312,7 @@ async function loadWhisperPipeline(modelName) {
             whisperPipeline = await pipeline('automatic-speech-recognition', modelName, {
                 dtype: 'q8',
                 device: 'webgpu',
+                revision,
             });
             device = 'webgpu';
             console.log('[LocalAI] Whisper loaded with WebGPU backend');
@@ -249,6 +321,7 @@ async function loadWhisperPipeline(modelName) {
             whisperPipeline = await pipeline('automatic-speech-recognition', modelName, {
                 dtype: 'q8',
                 device: 'cpu',
+                revision,
             });
             device = 'cpu';
             console.log('[LocalAI] Whisper loaded with CPU backend');
@@ -306,6 +379,7 @@ async function transcribeAudio(pcm16kBuffer) {
 
 async function handleSpeechEnd(audioData) {
     if (!isLocalActive) return;
+    const speechEndedAt = Date.now();
 
     // Minimum audio length check (~0.5 seconds at 16kHz, 16-bit)
     if (audioData.length < 16000) {
@@ -314,34 +388,16 @@ async function handleSpeechEnd(audioData) {
         return;
     }
 
-    // Wait for any in-flight rolling transcription to finish (P1-02 guard)
-    if (_isTranscribing) {
-        console.log('[LocalAI] Waiting for in-flight transcription to complete...');
-        await new Promise(resolve => {
-            const waitAndTranscribe = setInterval(() => {
-                if (!_isTranscribing) {
-                    clearInterval(waitAndTranscribe);
-                    resolve();
-                }
-            }, 50);
-            // Safety timeout: don't wait longer than 10 seconds
-            setTimeout(() => {
-                clearInterval(waitAndTranscribe);
-                resolve();
-            }, 10000);
-        });
-    }
-
-    _isTranscribing = true;
-    let transcription;
-    try {
-        transcription = await transcribeAudio(audioData);
-    } finally {
-        _isTranscribing = false;
-    }
+    // Final transcription is allowed to overlap a best-effort rolling pass so
+    // speech-end never waits behind an interim caption.
+    const transcription = await transcribeAudio(audioData);
 
     // Send final transcription to renderer (replacing any interim partial text)
     if (transcription && transcription.trim().length > 0) {
+        console.log(
+            '[SHADOW_LATENCY]',
+            JSON.stringify({ path: 'local', stage: 'speech_end_to_transcription_ready', milliseconds: Date.now() - speechEndedAt })
+        );
         sendToRenderer('interim-transcription', {
             text: transcription.trim(),
             isFinal: true,
@@ -355,6 +411,7 @@ async function handleSpeechEnd(audioData) {
     }
 
     sendToRenderer('update-status', 'Generating response...');
+    answerRequestedAt = Date.now();
     await sendToOllama(transcription);
 }
 
@@ -393,6 +450,17 @@ async function sendToOllama(transcription) {
         for await (const part of response) {
             const token = part.message?.content || '';
             if (token) {
+                if (isFirst && answerRequestedAt) {
+                    console.log(
+                        '[SHADOW_LATENCY]',
+                        JSON.stringify({
+                            path: 'local',
+                            stage: 'transcription_ready_to_answer_first_token',
+                            milliseconds: Date.now() - answerRequestedAt,
+                        })
+                    );
+                    answerRequestedAt = 0;
+                }
                 fullText += token;
                 sendToRenderer(isFirst ? 'new-response' : 'update-response', fullText);
                 isFirst = false;
@@ -434,6 +502,7 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
             const normalized = normalizeLanguageCode(prefs.selectedLanguage || 'en-US');
             // Whisper uses 2-letter ISO 639-1 codes; extract from BCP-47 tag
             currentWhisperLanguage = normalized.split('-')[0] || 'en';
+            setVadSilenceMs(prefs.vadSilenceMs);
         } catch {
             currentWhisperLanguage = 'en';
         }
@@ -511,11 +580,10 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
     }
 }
 
-function processLocalAudio(monoChunk24k) {
+function processLocalAudio(audioChunk, mimeType = 'audio/pcm;rate=24000') {
     if (!isLocalActive) return;
 
-    // Resample from 24kHz to 16kHz
-    const pcm16k = resample24kTo16k(monoChunk24k);
+    const pcm16k = mimeType.includes('rate=16000') ? audioChunk : resample24kTo16k(audioChunk);
     if (pcm16k.length > 0) {
         // processVAD is now async (due to Silero VAD inference)
         processVAD(pcm16k).catch(err => {
@@ -633,4 +701,8 @@ module.exports = {
     sendLocalImage,
     // Exported for unit testing
     resample24kTo16k,
+    getRollingAudio,
+    MAX_ROLLING_AUDIO_MS,
+    setVadSilenceMs,
+    verifyWhisperCache,
 };

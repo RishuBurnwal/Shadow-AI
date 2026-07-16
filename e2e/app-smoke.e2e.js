@@ -22,19 +22,25 @@ test.describe('Shadow AI', () => {
 
         app = await electron.launch({
             args: ['.'],
+            ...(process.env.ELECTRON_EXECUTABLE_PATH ? { executablePath: process.env.ELECTRON_EXECUTABLE_PATH } : {}),
             env: {
                 ...process.env,
                 NODE_ENV: 'test',
                 SHADOW_AI_SILENT: 'true',
                 SHADOW_AI_CONFIG_DIR: CONFIG_DIR,
+                GEMINI_API_KEY: '',
+                GROQ_API_KEY: '',
+                OPENROUTER_API_KEY: '',
+                OPENAI_API_KEY: '',
+                PERPLEXITY_API_KEY: '',
+                NVIDIA_API_KEY: '',
             },
         });
 
+        win = await app.firstWindow();
         await app.evaluate(async ({ session }) => {
             session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(true));
         });
-
-        win = await app.firstWindow();
         await win.waitForLoadState('domcontentloaded');
         // Wait for the custom element to be defined and upgraded
         await win.evaluate(() => customElements.whenDefined('shadow-ai-app'));
@@ -71,11 +77,14 @@ test.describe('Shadow AI', () => {
     });
 
     test('onboarding view renders in shadow DOM', async () => {
+        await win.waitForFunction(() => !!document.querySelector('shadow-ai-app')?.shadowRoot?.querySelector('onboarding-view'));
         const has = await win.evaluate(() => !!document.querySelector('shadow-ai-app')?.shadowRoot?.querySelector('onboarding-view'));
         expect(has).toBe(true);
     });
 
     test('top drag bar with traffic lights exist', async () => {
+        await win.evaluate(() => document.querySelector('shadow-ai-app')?.handleOnboardingComplete?.());
+        await win.waitForTimeout(200);
         const hasBar = await win.evaluate(() => !!document.querySelector('shadow-ai-app')?.shadowRoot?.querySelector('.top-drag-bar'));
         expect(hasBar).toBe(true);
 

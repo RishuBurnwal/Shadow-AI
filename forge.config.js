@@ -7,12 +7,16 @@ module.exports = {
             unpack: '**/{onnxruntime-node,onnxruntime-common,@huggingface/transformers,sharp,@img}/**',
         },
         extraResource: ['./src/assets/SystemAudioDump'],
-        ignore: [/^\/\.env$/],
+        ignore: [
+            /^\/\.env$/,
+            /^\/(?:\.agents|\.claude|\.codex|\.git|e2e|graphify-out|logs|out|test|test-results|__pycache__)(?:\/|$)/,
+            /^\/(?:01_AUDIT_REPORT|02_FIXING_PLAN_AND_PROMPT|03_ENHANCEMENTS_AND_ROADMAP)\.md$/,
+            /^\/(?:AGENTS|CLAUDE)\.md$/,
+        ],
         name: 'Shadow AI',
         icon: 'src/assets/logo',
         // use `security find-identity -v -p codesigning` to find your identity
         // for macos signing
-        // also fuck apple
         // osxSign: {
         //    identity: '<paste your identity here>',
         //   optionsForFile: (filePath) => {
@@ -21,7 +25,6 @@ module.exports = {
         //       };
         //   },
         // },
-        // notarize if off cuz i ran this for 6 hours and it still didnt finish
         // osxNotarize: {
         //    appleId: 'your apple id',
         //    appleIdPassword: 'app specific password',

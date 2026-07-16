@@ -30,8 +30,10 @@ function createWindow(sendToRenderer, geminiSessionRef) {
         hasShadow: false,
         alwaysOnTop: true,
         webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false, // requires nodeIntegration for AudioWorklet + IPC
+            preload: path.join(__dirname, '../preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: true,
             backgroundThrottling: false,
             enableBlinkFeatures: 'GetDisplayMedia',
             webSecurity: true,
@@ -200,10 +202,7 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                     const isMac = process.platform === 'darwin';
                     const shortcutKey = isMac ? 'cmd+enter' : 'ctrl+enter';
 
-                    // Use the new handleShortcut function
-                    mainWindow.webContents.executeJavaScript(`
-                        shadowAI.handleShortcut('${shortcutKey}');
-                    `);
+                    mainWindow.webContents.send('handle-shortcut', shortcutKey);
                 } catch (error) {
                     console.error('Error handling next step shortcut:', error);
                 }

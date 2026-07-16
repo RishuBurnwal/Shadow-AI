@@ -1,5 +1,5 @@
 const { GoogleGenAI } = require('@google/genai');
-const { BrowserWindow, ipcMain } = require('electron');
+const { BrowserWindow, ipcMain } = process.versions.electron ? require('electron') : { BrowserWindow: { getAllWindows: () => [] }, ipcMain: null };
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
 const { getSystemPrompt } = require('./prompts');
@@ -31,16 +31,40 @@ let currentProviderMode = 'byok';
 
 // Session-scoped state (replaces module-level globals for B3)
 let currentSession = null;
+const TURN_STATE = Object.freeze({ IDLE: 'IDLE', LISTENING: 'LISTENING', AWAITING_ANSWER: 'AWAITING_ANSWER', STREAMING: 'STREAMING' });
 
 function createSessionState() {
     return {
         transcription: '', // currentTranscription
         groqHistory: [], // groqConversationHistory
-        messageBuffer: '', // messageBuffer
-        answerFired: false, // answerProviderFiredForTurn
+        turnState: TURN_STATE.IDLE,
         turnStart: 0, // turnStartTime
         lastInputTime: 0, // lastInputTranscriptionTime
     };
+}
+
+function transitionTurn(state, event) {
+    if (event === 'INPUT') {
+        const bargeIn = state.turnState === TURN_STATE.STREAMING;
+        if (bargeIn) state.transcription = '';
+        state.turnState = TURN_STATE.LISTENING;
+        return { bargeIn };
+    }
+    if ((event === 'TURN_COMPLETE' || event === 'GENERATION_COMPLETE') && state.turnState === TURN_STATE.LISTENING) {
+        const transcription = state.transcription.trim();
+        state.transcription = '';
+        state.turnStart = 0;
+        state.lastInputTime = 0;
+        state.turnState = transcription ? TURN_STATE.AWAITING_ANSWER : TURN_STATE.IDLE;
+        return { transcription };
+    }
+    if (event === 'ANSWER_STARTED') state.turnState = TURN_STATE.STREAMING;
+    if (event === 'ANSWER_FINISHED') state.turnState = TURN_STATE.IDLE;
+    return {};
+}
+
+function logLatency(path, stage, milliseconds) {
+    console.log('[SHADOW_LATENCY]', JSON.stringify({ path, stage, milliseconds }));
 }
 
 // Conversation tracking variables
@@ -487,6 +511,10 @@ async function sendToGeminiText(transcription, appendUser = true) {
         for await (const chunk of response) {
             const chunkText = chunk.text;
             if (chunkText) {
+                if (isFirst && currentSession?.answerRequestedAt) {
+                    logLatency('cloud', 'transcription_ready_to_answer_first_token', Date.now() - currentSession.answerRequestedAt);
+                    currentSession.answerRequestedAt = 0;
+                }
                 fullText += chunkText;
                 sendToRenderer(isFirst ? 'new-response' : 'update-response', fullText);
                 isFirst = false;
@@ -581,6 +609,10 @@ async function sendToAnswerProvider(transcription) {
             onToken: (token, fullText) => {
                 const displayText = stripThinkingTags(fullText);
                 if (!displayText) return;
+                if (isFirst && currentSession?.answerRequestedAt) {
+                    logLatency('cloud', 'transcription_ready_to_answer_first_token', Date.now() - currentSession.answerRequestedAt);
+                    currentSession.answerRequestedAt = 0;
+                }
                 sendToRenderer(isFirst ? 'new-response' : 'update-response', displayText);
                 isFirst = false;
             },
@@ -700,27 +732,9 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
 
                         const isInputTranscription = !!message.serverContent?.inputTranscription;
 
-                        // Reset answerFired if a new turn arrives and the answer stream has already
-                        // completed (i.e. _currentAnswerAbort is null). This handles the case where
-                        // generationComplete does not fire after sendToAnswerProvider finishes,
-                        // which would otherwise leave answerFired=true permanently, silencing all
-                        // future answers in the session.
-                        if (isInputTranscription && s.answerFired && !_currentAnswerAbort) {
-                            if (isDebug) console.log('[AnswerFired] Reset for new turn (generationComplete was not received)');
-                            s.answerFired = false;
-                        }
-
-                        // Barge-in detection: if the user starts speaking while an answer is streaming,
-                        // cancel the current answer stream and reset state for the new turn.
-                        if (isInputTranscription && s.answerFired && !s.messageBuffer) {
+                        if (isInputTranscription && transitionTurn(s, 'INPUT').bargeIn) {
                             if (isDebug) console.log('[Barge-in] User started speaking mid-answer, cancelling stream');
                             cancelCurrentAnswer();
-                            // Reset state so the new turn can start fresh
-                            s.answerFired = false;
-                            s.transcription = '';
-                            s.turnStart = 0;
-                            s.lastInputTime = 0;
-                            s.messageBuffer = '';
                             sendToRenderer('update-status', 'Listening... (interrupted)');
                         }
 
@@ -746,40 +760,23 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             }
                         }
 
-                        // Primary trigger: turnComplete fires when the user's turn is finished
-                        if (message.serverContent?.turnComplete && !s.answerFired) {
-                            // Send final transcription to caption bar before clearing
-                            if (s.transcription.trim() !== '') {
-                                sendToRenderer('interim-transcription', { text: s.transcription, isFinal: true });
+                        const endEvent = message.serverContent?.turnComplete
+                            ? 'TURN_COMPLETE'
+                            : message.serverContent?.generationComplete
+                              ? 'GENERATION_COMPLETE'
+                              : null;
+                        if (endEvent) {
+                            const speechEndedAt = Date.now();
+                            const finalText = s.transcription;
+                            const { transcription } = transitionTurn(s, endEvent);
+                            if (transcription) {
+                                logLatency('cloud', 'speech_end_to_transcription_ready', Date.now() - speechEndedAt);
+                                sendToRenderer('interim-transcription', { text: finalText, isFinal: true });
+                                s.answerRequestedAt = Date.now();
+                                transitionTurn(s, 'ANSWER_STARTED');
+                                Promise.resolve(sendToAnswerProvider(transcription)).finally(() => transitionTurn(s, 'ANSWER_FINISHED'));
                             }
-                            s.answerFired = true;
-                            if (s.transcription.trim() !== '') {
-                                if (isDebug) {
-                                    const inputToAnswerMs = Date.now() - (s.lastInputTime || s.turnStart);
-                                    console.log(`[SHADOW_DEBUG] Input complete → answer call: ${inputToAnswerMs}ms`);
-                                }
-                                sendToAnswerProvider(s.transcription);
-                                s.transcription = '';
-                            }
-                            s.messageBuffer = '';
                             sendToRenderer('update-status', 'Listening...');
-                        }
-
-                        // Fallback: generationComplete should also trigger if turnComplete was missed
-                        if (message.serverContent?.generationComplete) {
-                            if (!s.answerFired && s.transcription.trim() !== '') {
-                                if (isDebug) {
-                                    console.log('[SHADOW_DEBUG] Generation complete triggered answer (turnComplete was not received or was late)');
-                                }
-                                s.answerFired = true;
-                                sendToAnswerProvider(s.transcription);
-                                s.transcription = '';
-                            }
-                            s.answerFired = false; // Reset for next turn
-                            s.messageBuffer = '';
-                            // Reset timing for next turn
-                            s.turnStart = 0;
-                            s.lastInputTime = 0;
                         }
                     },
                     onerror: function (e) {
@@ -859,11 +856,6 @@ async function attemptReconnect() {
     reconnectAttempts++;
     console.log(`Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
 
-    // Create fresh session state while preserving conversation history
-    const oldHistory = currentSession ? currentSession.groqHistory : [];
-    currentSession = createSessionState();
-    currentSession.groqHistory = oldHistory;
-
     sendToRenderer('update-status', `Reconnecting... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
     // Wait before attempting
@@ -877,7 +869,7 @@ async function attemptReconnect() {
             sessionParams.language,
             true // isReconnect
         );
-
+        if (session) return session;
         if (session && global.geminiSessionRef) {
             global.geminiSessionRef.current = session;
 
@@ -1180,7 +1172,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             if (currentProviderMode === 'cloud') {
                 sendCloudAudio(pcmBuffer);
             } else if (currentProviderMode === 'local') {
-                getLocalAi().processLocalAudio(pcmBuffer);
+                getLocalAi().processLocalAudio(pcmBuffer, mimeType);
             } else if (geminiSessionRef.current) {
                 if (isDebug) process.stdout.write('.');
                 geminiSessionRef.current
@@ -1204,7 +1196,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             if (currentProviderMode === 'cloud') {
                 sendCloudAudio(pcmBuffer);
             } else if (currentProviderMode === 'local') {
-                getLocalAi().processLocalAudio(pcmBuffer);
+                getLocalAi().processLocalAudio(pcmBuffer, mimeType);
             } else if (geminiSessionRef.current) {
                 if (isDebug) process.stdout.write(',');
                 geminiSessionRef.current
@@ -1452,4 +1444,7 @@ module.exports = {
     setupGeminiIpcHandlers,
     formatSpeakerResults,
     sendToAnswerProvider,
+    createSessionState,
+    transitionTurn,
+    TURN_STATE,
 };

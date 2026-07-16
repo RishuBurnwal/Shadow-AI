@@ -13,7 +13,7 @@ import time
 ROOT = Path(__file__).resolve().parent
 LOG_DIR = ROOT / "logs"
 READY_MARKER = "shadow-ai-ready"
-STARTUP_TIMEOUT = 12  # seconds to wait for the Electron window to signal readiness
+STARTUP_TIMEOUT = 60  # first-run model and native-runtime startup can be slow
 
 
 def cleanup_old_logs() -> None:

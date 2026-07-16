@@ -79,6 +79,78 @@ test('header AI color picker controls only rendered response text and persists',
     assert.match(storageSource, /responseTextColor: '#f5f5f5'/);
 });
 
+test('AI markdown is sanitized before it reaches innerHTML', () => {
+    const assistantSource = fs.readFileSync(path.join(root, 'src/components/views/AssistantView.js'), 'utf8');
+
+    assert.match(assistantSource, /this\.sanitizeHtml\(window\.marked\.parse\(content\)\)/);
+    assert.match(assistantSource, /script, iframe, object, embed/);
+    assert.match(assistantSource, /name\.startsWith\('on'\)/);
+    assert.match(assistantSource, /name === 'href' \|\| name === 'src'/);
+    assert.doesNotMatch(assistantSource, /sanitize:\s*false/);
+});
+
+test('renderer uses an isolated allow-listed preload bridge', () => {
+    const windowSource = fs.readFileSync(path.join(root, 'src/utils/window.js'), 'utf8');
+    const preloadSource = fs.readFileSync(path.join(root, 'src/preload.js'), 'utf8');
+    const rendererFiles = [
+        path.join(root, 'src/utils/renderer.js'),
+        ...fs.readdirSync(path.join(root, 'src/components/app')).map(file => path.join(root, 'src/components/app', file)),
+        ...fs.readdirSync(path.join(root, 'src/components/views')).map(file => path.join(root, 'src/components/views', file)),
+    ];
+
+    assert.match(windowSource, /nodeIntegration:\s*false/);
+    assert.match(windowSource, /contextIsolation:\s*true/);
+    assert.match(windowSource, /sandbox:\s*true/);
+    assert.match(preloadSource, /contextBridge\.exposeInMainWorld\('electronAPI'/);
+    assert.match(preloadSource, /IPC channel not allowed/);
+    assert.doesNotMatch(windowSource, /executeJavaScript/);
+    for (const file of rendererFiles) {
+        const source = fs.readFileSync(file, 'utf8');
+        assert.doesNotMatch(source, /(?:window\.)?require\(['"]electron['"]\)/, path.relative(root, file));
+    }
+});
+
+test('renderer CSP and external links reject executable URL schemes', () => {
+    const htmlSource = fs.readFileSync(path.join(root, 'src/index.html'), 'utf8');
+    const indexSource = fs.readFileSync(path.join(root, 'src/index.js'), 'utf8');
+
+    assert.match(htmlSource, /default-src 'self'/);
+    assert.doesNotMatch(htmlSource, /script-src[^;]*'unsafe-inline'/);
+    assert.match(indexSource, /parsed\.protocol !== 'https:'/);
+});
+
+test('Gemini Live remains transcription-only and streams each incoming audio chunk', () => {
+    const source = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
+
+    assert.doesNotMatch(source, /responseModalities\s*:\s*\[[^\]]*AUDIO/);
+    assert.match(source, /inputAudioTranscription\s*:/);
+    assert.match(source, /sendRealtimeInput\(\{\s*audio:/);
+    assert.doesNotMatch(source, /pendingAudioChunks|audioBatch/);
+});
+
+test('production credential storage never falls back to plaintext', () => {
+    const source = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
+
+    assert.match(source, /if \(process\.versions\.electron\)/);
+    assert.match(source, /Secure credential storage is unavailable/);
+});
+
+test('Whisper downloads are pinned to immutable model revisions', () => {
+    const source = fs.readFileSync(path.join(root, 'src/utils/localai.js'), 'utf8');
+
+    assert.match(source, /WHISPER_REVISIONS/);
+    assert.match(source, /revision,/);
+    assert.match(source, /has no pinned revision/);
+});
+
+test('speech-end transcription never waits for a rolling Whisper pass', () => {
+    const source = fs.readFileSync(path.join(root, 'src/utils/localai.js'), 'utf8');
+    const handler = source.slice(source.indexOf('async function handleSpeechEnd'), source.indexOf('// â”€â”€ Ollama Chat'));
+
+    assert.doesNotMatch(handler, /Waiting for in-flight|setInterval/);
+    assert.match(handler, /const transcription = await transcribeAudio\(audioData\)/);
+});
+
 test('history exposes confirmed bulk deletion and feedback feature is absent', () => {
     const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
     const historySource = fs.readFileSync(path.join(root, 'src/components/views/HistoryView.js'), 'utf8');
@@ -124,7 +196,15 @@ test('session metadata is persisted and history supports edit and individual del
 
 test('maintained project files contain no legacy product references', () => {
     const legacy = new RegExp(['cheating', 'daddy'].join('[-_\\s]?'), 'i');
-    const ignored = new Set(['.git', 'node_modules', 'graphify-out', 'test']);
+    const ignored = new Set([
+        '.git',
+        'node_modules',
+        'graphify-out',
+        'test',
+        '01_AUDIT_REPORT.md',
+        '02_FIXING_PLAN_AND_PROMPT.md',
+        '03_ENHANCEMENTS_AND_ROADMAP.md',
+    ]);
     const matches = [];
 
     function visit(directory) {
@@ -154,4 +234,16 @@ test('speech language preferences reject auto and invalid values', () => {
     assert.equal(normalizeLanguageCode('   '), 'en-US');
     assert.equal(normalizeLanguageCode('hi-IN'), 'hi-IN');
     assert.equal(normalizeLanguageCode('zzzzz'), 'en-US');
+});
+
+test('local VAD silence timeout is persisted and exposed in Settings', () => {
+    const storageSource = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
+    const settingsSource = fs.readFileSync(path.join(root, 'src/components/views/CustomizeView.js'), 'utf8');
+    const indexSource = fs.readFileSync(path.join(root, 'src/index.js'), 'utf8');
+
+    assert.match(storageSource, /vadSilenceMs:\s*500/);
+    assert.match(settingsSource, /min="300"/);
+    assert.match(settingsSource, /max="1200"/);
+    assert.match(settingsSource, /updatePreference\('vadSilenceMs'/);
+    assert.match(indexSource, /setVadSilenceMs\(value\)/);
 });

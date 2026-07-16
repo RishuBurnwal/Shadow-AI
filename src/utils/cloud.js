@@ -1,5 +1,5 @@
 const WebSocket = require('ws');
-const { BrowserWindow } = require('electron');
+const { BrowserWindow } = process.versions.electron ? require('electron') : { BrowserWindow: { getAllWindows: () => [] } };
 
 let cloudWs = null;
 let isCloudConnected = false;

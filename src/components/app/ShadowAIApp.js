@@ -627,8 +627,8 @@ export class ShadowAIApp extends LitElement {
     connectedCallback() {
         super.connectedCallback();
 
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             ipcRenderer.on('new-response', (_, response) => this.addNewResponse(response));
             ipcRenderer.on('update-response', (_, response) => this.updateCurrentResponse(response));
             ipcRenderer.on('update-status', (_, status) => this.setStatus(status));
@@ -658,8 +658,8 @@ export class ShadowAIApp extends LitElement {
     disconnectedCallback() {
         super.disconnectedCallback();
         this._stopTimer();
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             ipcRenderer.removeAllListeners('new-response');
             ipcRenderer.removeAllListeners('update-response');
             ipcRenderer.removeAllListeners('update-status');
@@ -798,31 +798,31 @@ export class ShadowAIApp extends LitElement {
     async handleClose() {
         if (this.currentView === 'assistant') {
             shadowAI.stopCapture();
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
+            if (window.electronAPI) {
+                const { ipcRenderer } = window.electronAPI;
                 await ipcRenderer.invoke('close-session');
             }
             this.sessionActive = false;
             this._stopTimer();
             this.currentView = 'main';
         } else {
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
+            if (window.electronAPI) {
+                const { ipcRenderer } = window.electronAPI;
                 await ipcRenderer.invoke('quit-application');
             }
         }
     }
 
     async _handleMinimize() {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             await ipcRenderer.invoke('window-minimize');
         }
     }
 
     async handleHideToggle() {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             await ipcRenderer.invoke('toggle-window-visibility');
         }
     }
@@ -851,8 +851,8 @@ export class ShadowAIApp extends LitElement {
     }
 
     async togglePassthrough() {
-        if (!window.require) return;
-        const { ipcRenderer } = window.require('electron');
+        if (!window.electronAPI) return;
+        const { ipcRenderer } = window.electronAPI;
         const result = await ipcRenderer.invoke('set-passthrough', !this._isClickThrough);
         if (result?.success) this._isClickThrough = result.enabled;
     }
@@ -927,15 +927,15 @@ export class ShadowAIApp extends LitElement {
     }
 
     async handleAPIKeyHelp() {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             await ipcRenderer.invoke('open-external', 'https://shadow-ai.com/help/api-key');
         }
     }
 
     async handleGroqAPIKeyHelp() {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             await ipcRenderer.invoke('open-external', 'https://console.groq.com/keys');
         }
     }
@@ -969,8 +969,8 @@ export class ShadowAIApp extends LitElement {
     }
 
     async handleExternalLinkClick(url) {
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             await ipcRenderer.invoke('open-external', url);
         }
     }
@@ -998,8 +998,8 @@ export class ShadowAIApp extends LitElement {
     updated(changedProperties) {
         super.updated(changedProperties);
 
-        if (changedProperties.has('currentView') && window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (changedProperties.has('currentView') && window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             ipcRenderer.send('view-changed', this.currentView);
         }
     }

@@ -183,6 +183,7 @@ export class CustomizeView extends LitElement {
         keybinds: { type: Object },
         googleSearchEnabled: { type: Boolean },
         privacyMode: { type: Boolean },
+        vadSilenceMs: { type: Number },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         theme: { type: String },
@@ -211,6 +212,7 @@ export class CustomizeView extends LitElement {
         this.onBackgroundTransparencyChange = () => {};
         this.googleSearchEnabled = true;
         this.privacyMode = false;
+        this.vadSilenceMs = 500;
         this.isClearing = false;
         this.isRestoring = false;
         this.clearStatusMessage = '';
@@ -232,6 +234,7 @@ export class CustomizeView extends LitElement {
             const [prefs, keybinds] = await Promise.all([shadowAI.storage.getPreferences(), shadowAI.storage.getKeybinds()]);
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
             this.privacyMode = prefs.privacyMode ?? false;
+            this.vadSilenceMs = prefs.vadSilenceMs ?? 500;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
@@ -329,8 +332,8 @@ export class CustomizeView extends LitElement {
 
     async saveKeybinds() {
         await shadowAI.storage.setKeybinds(this.keybinds);
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             ipcRenderer.send('update-keybinds', this.keybinds);
         }
     }
@@ -366,6 +369,12 @@ export class CustomizeView extends LitElement {
         this.requestUpdate();
     }
 
+    async handleVadSilenceChange(e) {
+        this.vadSilenceMs = Number(e.target.value);
+        await shadowAI.storage.updatePreference('vadSilenceMs', this.vadSilenceMs);
+        this.requestUpdate();
+    }
+
     async handleThemeChange(e) {
         this.theme = e.target.value;
         await shadowAI.theme.save(this.theme);
@@ -376,9 +385,9 @@ export class CustomizeView extends LitElement {
     async handleGoogleSearchChange(e) {
         this.googleSearchEnabled = e.target.checked;
         await shadowAI.storage.updatePreference('googleSearchEnabled', this.googleSearchEnabled);
-        if (window.require) {
+        if (window.electronAPI) {
             try {
-                const { ipcRenderer } = window.require('electron');
+                const { ipcRenderer } = window.electronAPI;
                 await ipcRenderer.invoke('update-google-search-setting', this.googleSearchEnabled);
             } catch (error) {
                 console.error('Failed to notify main process:', error);
@@ -475,8 +484,8 @@ export class CustomizeView extends LitElement {
     async resetKeybinds() {
         this.keybinds = this.getDefaultKeybinds();
         await shadowAI.storage.setKeybinds(null);
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             ipcRenderer.send('update-keybinds', this.keybinds);
         }
         this.requestUpdate();
@@ -510,8 +519,8 @@ export class CustomizeView extends LitElement {
             // Restore keybinds
             this.keybinds = this.getDefaultKeybinds();
             await shadowAI.storage.setKeybinds(null);
-            if (window.require) {
-                const { ipcRenderer } = window.require('electron');
+            if (window.electronAPI) {
+                const { ipcRenderer } = window.electronAPI;
                 ipcRenderer.send('update-keybinds', this.keybinds);
             }
 
@@ -563,8 +572,8 @@ export class CustomizeView extends LitElement {
                 this.clearStatusMessage = 'Closing application...';
                 this.requestUpdate();
                 setTimeout(async () => {
-                    if (window.require) {
-                        const { ipcRenderer } = window.require('electron');
+                    if (window.electronAPI) {
+                        const { ipcRenderer } = window.electronAPI;
                         await ipcRenderer.invoke('quit-application');
                     }
                 }, 1000);
@@ -606,6 +615,21 @@ export class CustomizeView extends LitElement {
                             <option value="medium">Medium Quality</option>
                             <option value="low">Low Quality</option>
                         </select>
+                    </div>
+                    <div class="form-group slider-wrap">
+                        <div class="slider-header">
+                            <label class="form-label">End speech after silence</label>
+                            <span class="slider-value">${this.vadSilenceMs} ms</span>
+                        </div>
+                        <input
+                            class="slider-input"
+                            type="range"
+                            min="300"
+                            max="1200"
+                            step="100"
+                            .value=${this.vadSilenceMs}
+                            @input=${this.handleVadSilenceChange}
+                        />
                     </div>
                 </div>
             </section>

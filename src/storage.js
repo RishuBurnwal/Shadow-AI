@@ -3,14 +3,10 @@ const path = require('path');
 const os = require('os');
 
 // Lazy-loaded safeStorage reference (may not be available in all contexts)
-let _safeStorage = null;
+let _safeStorage;
 function getSafeStorage() {
     if (_safeStorage === undefined) {
-        try {
-            _safeStorage = require('electron').safeStorage;
-        } catch {
-            _safeStorage = null;
-        }
+        _safeStorage = process.versions.electron ? require('electron').safeStorage : null;
     }
     return _safeStorage;
 }
@@ -49,6 +45,7 @@ const DEFAULT_PREFERENCES = {
     ollamaHost: 'http://127.0.0.1:11434',
     ollamaModel: 'llama3.1',
     whisperModel: 'Xenova/whisper-small',
+    vadSilenceMs: 500,
     privacyMode: false,
 };
 
@@ -414,7 +411,10 @@ function setCredentials(credentials) {
         }
         encrypted[CREDENTIALS_ENCRYPTION_MARKER] = CREDENTIALS_MARKER_VALUE;
     } else {
-        // safeStorage unavailable (e.g., headless test env) — store plaintext
+        if (process.versions.electron) {
+            throw new Error('Secure credential storage is unavailable. API keys were not saved.');
+        }
+        // Headless tests have no OS keychain; production Electron never reaches this branch.
         for (const key of Object.keys(DEFAULT_CREDENTIALS)) {
             encrypted[key] = merged[key] || '';
         }

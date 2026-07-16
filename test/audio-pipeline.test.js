@@ -1,10 +1,55 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 // Import the REAL resample24kTo16k function from the source module.
 // This verifies that the actual production code works correctly, not an
 // inline reimplementation that could drift from the real logic.
-const { resample24kTo16k } = require('../src/utils/localai.js');
+const { resample24kTo16k, getRollingAudio, MAX_ROLLING_AUDIO_MS, setVadSilenceMs, verifyWhisperCache } = require('../src/utils/localai.js');
+const { createSessionState, transitionTurn, TURN_STATE } = require('../src/utils/gemini.js');
+
+test('Gemini turn reducer handles normal, fallback, and barge-in sequences', () => {
+    const normal = createSessionState();
+    transitionTurn(normal, 'INPUT');
+    normal.transcription = 'normal turn';
+    assert.equal(transitionTurn(normal, 'TURN_COMPLETE').transcription, 'normal turn');
+    assert.equal(normal.turnState, TURN_STATE.AWAITING_ANSWER);
+    transitionTurn(normal, 'ANSWER_STARTED');
+    assert.equal(transitionTurn(normal, 'INPUT').bargeIn, true);
+    assert.equal(normal.turnState, TURN_STATE.LISTENING);
+
+    const fallback = createSessionState();
+    transitionTurn(fallback, 'INPUT');
+    fallback.transcription = 'fallback turn';
+    assert.equal(transitionTurn(fallback, 'GENERATION_COMPLETE').transcription, 'fallback turn');
+    assert.equal(transitionTurn(fallback, 'GENERATION_COMPLETE').transcription, undefined);
+});
+
+test('local rolling transcription never sends more than five seconds to Whisper', () => {
+    const twentySeconds = Buffer.alloc(20 * 16000 * 2);
+    const rolling = getRollingAudio(twentySeconds);
+
+    assert.equal(MAX_ROLLING_AUDIO_MS, 5000);
+    assert.equal(rolling.length, 5 * 16000 * 2);
+});
+
+test('VAD silence preference is clamped to its supported range', () => {
+    assert.equal(setVadSilenceMs(100), 300);
+    assert.equal(setVadSilenceMs(800), 800);
+    assert.equal(setVadSilenceMs(5000), 1200);
+});
+
+test('corrupt cached Whisper weights are rejected before model load', () => {
+    const cache = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'shadow-whisper-hash-'));
+    const file = path.join(cache, 'Xenova/whisper-tiny/revision/onnx/encoder_model_quantized.onnx');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'corrupt model');
+
+    verifyWhisperCache(cache, 'Xenova/whisper-tiny', 'revision');
+    assert.equal(fs.existsSync(file), false);
+    fs.rmSync(cache, { recursive: true, force: true });
+});
 
 // ── Resample test ──
 
@@ -89,83 +134,4 @@ test('resample24kTo16k preserves signal shape (frequency domain check)', () => {
         }
     }
     assert.equal(hasSignal, true, 'Output should contain non-zero audio samples');
-});
-
-// ── Answer-trigger logic test ──
-
-test('sendToAnswerProvider is triggered on turnComplete, not generationComplete', () => {
-    // Simulate the corrected onmessage logic from gemini.js's answerFired flow
-    let answerProviderCalledWith = null;
-    let answerProviderCallCount = 0;
-    let answerFired = false;
-    let currentTranscription = '';
-
-    function mockSendToAnswerProvider(transcription) {
-        answerProviderCalledWith = transcription;
-        answerProviderCallCount++;
-    }
-
-    function simulateOnMessage(message) {
-        // Handle input transcription
-        if (message.serverContent?.inputTranscription?.text) {
-            currentTranscription += message.serverContent.inputTranscription.text;
-        }
-
-        // Primary trigger: turnComplete
-        if (message.serverContent?.turnComplete && !answerFired) {
-            answerFired = true;
-            if (currentTranscription.trim() !== '') {
-                mockSendToAnswerProvider(currentTranscription);
-                currentTranscription = '';
-            }
-        }
-
-        // Fallback: generationComplete
-        if (message.serverContent?.generationComplete) {
-            if (!answerFired && currentTranscription.trim() !== '') {
-                answerFired = true;
-                mockSendToAnswerProvider(currentTranscription);
-                currentTranscription = '';
-            }
-            answerFired = false; // Reset for next turn
-        }
-    }
-
-    // Simulate a typical turn: input transcription arrives, then turnComplete
-    simulateOnMessage({
-        serverContent: { inputTranscription: { text: 'What is the weather?' } },
-    });
-
-    assert.equal(answerProviderCallCount, 0, 'Answer should not fire on transcription update');
-
-    simulateOnMessage({
-        serverContent: { turnComplete: {} },
-    });
-
-    assert.equal(answerProviderCallCount, 1, 'Answer should fire exactly once on turnComplete');
-    assert.equal(answerProviderCalledWith, 'What is the weather?', 'Answer should be called with the transcription');
-
-    // generationComplete arrives after - should NOT trigger another answer
-    simulateOnMessage({
-        serverContent: { generationComplete: {} },
-    });
-
-    assert.equal(answerProviderCallCount, 1, 'generationComplete should not trigger a second answer');
-
-    // Next turn: test that generationComplete fallback works if turnComplete is missed
-    simulateOnMessage({
-        serverContent: { inputTranscription: { text: 'What about tomorrow?' } },
-    });
-
-    assert.equal(answerProviderCallCount, 1, 'Still one call');
-
-    simulateOnMessage({
-        serverContent: { generationComplete: {} },
-    });
-
-    assert.equal(answerProviderCallCount, 2, 'generationComplete should trigger if turnComplete was missed');
-    assert.equal(answerProviderCalledWith, 'What about tomorrow?', 'Fallback answer should be called with the second transcription');
-
-    // Verify answerFired resets properly
-    assert.equal(answerFired, false, 'answerFired should reset after generationComplete');
 });

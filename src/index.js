@@ -3,6 +3,7 @@ if (require('electron-squirrel-startup')) {
 }
 
 const fs = require('fs');
+const path = require('node:path');
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const { createWindow } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
@@ -195,6 +196,7 @@ function setupStorageIpcHandlers() {
     ipcMain.handle('storage:update-preference', async (event, key, value) => {
         try {
             storage.updatePreference(key, value);
+            if (key === 'vadSilenceMs') require('./utils/localai').setVadSilenceMs(value);
             return { success: true };
         } catch (error) {
             console.error('Error updating preference:', error);
@@ -385,6 +387,7 @@ function setupStorageIpcHandlers() {
 }
 
 function setupGeneralIpcHandlers() {
+    ipcMain.handle('get-audio-worklet-source', () => fs.readFileSync(path.join(__dirname, 'audio', 'audio-chunk-processor.js'), 'utf8'));
     const preferences = storage.getPreferences();
     const initialSelection = applyProviderSelection(preferences.answerProvider || 'default');
     if (preferences.answerProvider === 'gemma') storage.updatePreference('answerProvider', 'gemini');
@@ -494,7 +497,9 @@ function setupGeneralIpcHandlers() {
 
     ipcMain.handle('open-external', async (event, url) => {
         try {
-            await shell.openExternal(url);
+            const parsed = new URL(String(url));
+            if (parsed.protocol !== 'https:') throw new Error('Only HTTPS links are allowed');
+            await shell.openExternal(parsed.href);
             return { success: true };
         } catch (error) {
             console.error('Error opening external URL:', error);

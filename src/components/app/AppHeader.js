@@ -189,7 +189,7 @@ export class AppHeader extends LitElement {
     }
 
     async _openUpdatePage() {
-        const { ipcRenderer } = require('electron');
+        const { ipcRenderer } = window.electronAPI;
         await ipcRenderer.invoke('open-external', 'https://shadow-ai.com');
     }
 

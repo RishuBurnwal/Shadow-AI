@@ -1,6 +1,5 @@
 // renderer.js
-const { ipcRenderer } = require('electron');
-const path = require('path');
+const { ipcRenderer, platform, getAudioWorkletSource } = window.electronAPI;
 
 let mediaStream = null;
 let screenshotInterval = null;
@@ -9,10 +8,9 @@ let audioProcessor = null;
 let micAudioProcessor = null;
 let audioBuffer = [];
 const SAMPLE_RATE = 24000;
+const captureSampleRate = () => (preferencesCache?.providerMode === 'local' ? 16000 : SAMPLE_RATE);
 const AUDIO_CHUNK_DURATION = 0.1; // seconds
 const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
-
-const fs = require('fs');
 
 // Cache the Blob URL so addModule calls reuse the same one (idempotent on same AudioContext)
 let _cachedWorkletBlobUrl = null;
@@ -25,12 +23,10 @@ let _cachedWorkletBlobUrl = null;
  * gives us a synthetic origin that satisfies the same-origin check without
  * needing a custom protocol handler.
  */
-function getAudioWorkletUrl() {
+async function getAudioWorkletUrl() {
     if (_cachedWorkletBlobUrl) return _cachedWorkletBlobUrl;
 
-    const workletPath = path.join(__dirname, '..', 'audio', 'audio-chunk-processor.js');
-    const code = fs.readFileSync(workletPath, 'utf8');
-    const blob = new Blob([code], { type: 'application/javascript' });
+    const blob = new Blob([await getAudioWorkletSource()], { type: 'application/javascript' });
     _cachedWorkletBlobUrl = URL.createObjectURL(blob);
     return _cachedWorkletBlobUrl;
 }
@@ -40,8 +36,8 @@ let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
 
-const isLinux = process.platform === 'linux';
-const isMacOS = process.platform === 'darwin';
+const isLinux = platform === 'linux';
+const isMacOS = platform === 'darwin';
 
 // ============ STORAGE API ============
 // Wrapper for IPC-based storage access
@@ -250,6 +246,8 @@ ipcRenderer.on('update-status', (event, status) => {
     shadowAI.setStatus(status);
 });
 
+ipcRenderer.on('handle-shortcut', (_event, shortcut) => shadowAI.handleShortcut(shortcut));
+
 async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'medium') {
     // Store the image quality for manual screenshots
     currentImageQuality = imageQuality;
@@ -432,18 +430,20 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
 async function setupLinuxMicProcessing(micStream) {
     // Setup microphone audio processing for Linux
-    const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const sampleRate = captureSampleRate();
+    const micAudioContext = new AudioContext({ sampleRate });
     const micSource = micAudioContext.createMediaStreamSource(micStream);
 
     // Register the AudioWorkletProcessor module
-    const workletUrl = getAudioWorkletUrl();
+    const workletUrl = await getAudioWorkletUrl();
     await micAudioContext.audioWorklet.addModule(workletUrl);
 
     // Create AudioWorkletNode with channel name for mic audio
     const micNode = new AudioWorkletNode(micAudioContext, 'audio-chunk-processor', {
         processorOptions: {
             channelName: 'send-mic-audio-content',
-            mimeType: 'audio/pcm;rate=24000',
+            mimeType: `audio/pcm;rate=${sampleRate}`,
+            sampleRate,
         },
     });
 
@@ -471,18 +471,20 @@ async function setupLinuxMicProcessing(micStream) {
 
 async function setupLinuxSystemAudioProcessing() {
     // Setup system audio processing for Linux (from getDisplayMedia)
-    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const sampleRate = captureSampleRate();
+    audioContext = new AudioContext({ sampleRate });
     const source = audioContext.createMediaStreamSource(mediaStream);
 
     // Register the AudioWorkletProcessor module
-    const workletUrl = getAudioWorkletUrl();
+    const workletUrl = await getAudioWorkletUrl();
     await audioContext.audioWorklet.addModule(workletUrl);
 
     // Create AudioWorkletNode with default channel name for system audio
     const node = new AudioWorkletNode(audioContext, 'audio-chunk-processor', {
         processorOptions: {
             channelName: 'send-audio-content',
-            mimeType: 'audio/pcm;rate=24000',
+            mimeType: `audio/pcm;rate=${sampleRate}`,
+            sampleRate,
         },
     });
 
@@ -510,18 +512,20 @@ async function setupLinuxSystemAudioProcessing() {
 
 async function setupWindowsLoopbackProcessing() {
     // Setup audio processing for Windows loopback audio only
-    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const sampleRate = captureSampleRate();
+    audioContext = new AudioContext({ sampleRate });
     const source = audioContext.createMediaStreamSource(mediaStream);
 
     // Register the AudioWorkletProcessor module
-    const workletUrl = getAudioWorkletUrl();
+    const workletUrl = await getAudioWorkletUrl();
     await audioContext.audioWorklet.addModule(workletUrl);
 
     // Create AudioWorkletNode with default channel name for system audio
     const node = new AudioWorkletNode(audioContext, 'audio-chunk-processor', {
         processorOptions: {
             channelName: 'send-audio-content',
-            mimeType: 'audio/pcm;rate=24000',
+            mimeType: `audio/pcm;rate=${sampleRate}`,
+            sampleRate,
         },
     });
 

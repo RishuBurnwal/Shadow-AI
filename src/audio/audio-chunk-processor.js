@@ -10,8 +10,6 @@
  */
 
 const CHUNK_DURATION = 0.1; // seconds — matches AUDIO_CHUNK_DURATION in renderer.js
-const SAMPLE_RATE = 24000;
-const SAMPLES_PER_CHUNK = Math.floor(SAMPLE_RATE * CHUNK_DURATION); // 2400 samples
 
 class AudioChunkProcessor extends AudioWorkletProcessor {
     constructor(options) {
@@ -19,6 +17,7 @@ class AudioChunkProcessor extends AudioWorkletProcessor {
         this.audioBuffer = []; // Float32 accumulation buffer
         this.channelName = options?.processorOptions?.channelName || 'send-audio-content';
         this.mimeType = options?.processorOptions?.mimeType || 'audio/pcm;rate=24000';
+        this.samplesPerChunk = Math.floor((options?.processorOptions?.sampleRate || 24000) * CHUNK_DURATION);
     }
 
     /**
@@ -42,8 +41,8 @@ class AudioChunkProcessor extends AudioWorkletProcessor {
         }
 
         // Flush full chunks from the buffer
-        while (this.audioBuffer.length >= SAMPLES_PER_CHUNK) {
-            const chunk = this.audioBuffer.splice(0, SAMPLES_PER_CHUNK);
+        while (this.audioBuffer.length >= this.samplesPerChunk) {
+            const chunk = this.audioBuffer.splice(0, this.samplesPerChunk);
             const int16Data = this._convertFloat32ToInt16(chunk);
 
             // Post the Int16Array buffer to the main thread (transferable for zero-copy)

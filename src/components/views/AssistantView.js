@@ -408,9 +408,8 @@ export class AssistantView extends LitElement {
                 window.marked.setOptions({
                     breaks: true,
                     gfm: true,
-                    sanitize: false,
                 });
-                let rendered = window.marked.parse(content);
+                let rendered = this.sanitizeHtml(window.marked.parse(content));
                 rendered = this.wrapWordsInSpans(rendered);
                 return rendered;
             } catch (error) {
@@ -419,6 +418,25 @@ export class AssistantView extends LitElement {
             }
         }
         return content;
+    }
+
+    sanitizeHtml(html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        doc.querySelectorAll('script, iframe, object, embed, link, meta, base, form, input, button, textarea, select').forEach(node => node.remove());
+        doc.querySelectorAll('*').forEach(node => {
+            for (const attribute of [...node.attributes]) {
+                const name = attribute.name.toLowerCase();
+                const value = attribute.value.trim().toLowerCase();
+                if (
+                    name.startsWith('on') ||
+                    name === 'style' ||
+                    ((name === 'href' || name === 'src') && !/^(https?:|mailto:|#|\/(?!\/))/.test(value))
+                ) {
+                    node.removeAttribute(attribute.name);
+                }
+            }
+        });
+        return doc.body.innerHTML;
     }
 
     wrapWordsInSpans(html) {
@@ -492,8 +510,8 @@ export class AssistantView extends LitElement {
     connectedCallback() {
         super.connectedCallback();
 
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
 
             this.handlePreviousResponse = () => this.navigateToPreviousResponse();
             this.handleNextResponse = () => this.navigateToNextResponse();
@@ -511,8 +529,8 @@ export class AssistantView extends LitElement {
         super.disconnectedCallback();
         this._stopWaveformAnimation();
 
-        if (window.require) {
-            const { ipcRenderer } = window.require('electron');
+        if (window.electronAPI) {
+            const { ipcRenderer } = window.electronAPI;
             if (this.handlePreviousResponse) ipcRenderer.removeListener('navigate-previous-response', this.handlePreviousResponse);
             if (this.handleNextResponse) ipcRenderer.removeListener('navigate-next-response', this.handleNextResponse);
             if (this.handleScrollUp) ipcRenderer.removeListener('scroll-response-up', this.handleScrollUp);

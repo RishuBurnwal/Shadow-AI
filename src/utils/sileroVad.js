@@ -10,7 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const ort = require('onnxruntime-node');
 const https = require('https');
-const { app } = require('electron');
+const { app } = process.versions.electron ? require('electron') : { app: { getPath: () => process.cwd() } };
 
 // ── Constants ──
 
