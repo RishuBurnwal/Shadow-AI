@@ -341,31 +341,33 @@ export class MemoryView extends LitElement {
                     </div>
                 </div>
                 <div class="fact-card-body">
-                    ${isEditing
-                        ? html`
-                              <div class="fact-edit-area">
-                                  <textarea class="control" .value=${this.editText} @input=${e => (this.editText = e.target.value)}></textarea>
-                                  <select class="control" .value=${this.editCategory} @change=${e => (this.editCategory = e.target.value)}>
-                                      <option value="skill">Skill</option>
-                                      <option value="preference">Preference</option>
-                                      <option value="background">Background</option>
-                                      <option value="project">Project</option>
-                                      <option value="goal">Goal</option>
-                                      <option value="other">Other</option>
-                                  </select>
-                                  <div class="fact-edit-actions">
-                                      <button class="fact-btn" @click=${this.saveEdit}>Save</button>
-                                      <button class="fact-btn" @click=${this.cancelEdit}>Cancel</button>
+                    ${
+                        isEditing
+                            ? html`
+                                  <div class="fact-edit-area">
+                                      <textarea class="control" .value=${this.editText} @input=${e => (this.editText = e.target.value)}></textarea>
+                                      <select class="control" .value=${this.editCategory} @change=${e => (this.editCategory = e.target.value)}>
+                                          <option value="skill">Skill</option>
+                                          <option value="preference">Preference</option>
+                                          <option value="background">Background</option>
+                                          <option value="project">Project</option>
+                                          <option value="goal">Goal</option>
+                                          <option value="other">Other</option>
+                                      </select>
+                                      <div class="fact-edit-actions">
+                                          <button class="fact-btn" @click=${this.saveEdit}>Save</button>
+                                          <button class="fact-btn" @click=${this.cancelEdit}>Cancel</button>
+                                      </div>
                                   </div>
-                              </div>
-                          `
-                        : html`
-                              <div class="fact-text">${fact.fact}</div>
-                              <div class="fact-actions">
-                                  <button class="fact-btn" @click=${() => this.startEdit(fact)}>Edit</button>
-                                  <button class="fact-btn danger" @click=${() => this.deleteEntry(fact.id)}>Delete</button>
-                              </div>
-                          `}
+                              `
+                            : html`
+                                  <div class="fact-text">${fact.fact}</div>
+                                  <div class="fact-actions">
+                                      <button class="fact-btn" @click=${() => this.startEdit(fact)}>Edit</button>
+                                      <button class="fact-btn danger" @click=${() => this.deleteEntry(fact.id)}>Delete</button>
+                                  </div>
+                              `
+                    }
                 </div>
             </div>
         `;
@@ -392,27 +394,35 @@ export class MemoryView extends LitElement {
             </div>
 
             ${this.errorMsg ? html`<div class="error-msg" role="alert">${this.errorMsg}</div>` : ''}
-
-            ${this.privacyMode ? html`
-                <div class="surface" style="grid-column:1/-1;border-color:var(--warning);border-style:dashed;">
-                    <div class="surface-title" style="color:var(--warning);">Privacy Mode Active</div>
-                    <div class="surface-subtitle">Memory learning is paused. No new facts will be remembered from your conversations until you turn off Privacy Mode in Settings.</div>
-                </div>
-            ` : ''}
+            ${
+                this.privacyMode
+                    ? html`
+                          <div class="surface" style="grid-column:1/-1;border-color:var(--warning);border-style:dashed;">
+                              <div class="surface-title" style="color:var(--warning);">Privacy Mode Active</div>
+                              <div class="surface-subtitle">
+                                  Memory learning is paused. No new facts will be remembered from your conversations until you turn off Privacy Mode
+                                  in Settings.
+                              </div>
+                          </div>
+                      `
+                    : ''
+            }
 
             <div class="memory-layout">
                 <div class="surface" style="grid-column:1/-1;">
                     <div class="surface-title">Learned Facts</div>
                     <div class="surface-subtitle">The assistant learns these from your conversations over time.</div>
-                    ${sorted.length === 0
-                        ? html`
-                              <div class="empty-state">
-                                  No memory facts yet.
-                                  <br />
-                                  <span class="muted">Facts are automatically extracted from your sessions when you close them.</span>
-                              </div>
-                          `
-                        : sorted.map(f => this.renderFactCard(f))}
+                    ${
+                        sorted.length === 0
+                            ? html`
+                                  <div class="empty-state">
+                                      No memory facts yet.
+                                      <br />
+                                      <span class="muted">Facts are automatically extracted from your sessions when you close them.</span>
+                                  </div>
+                              `
+                            : sorted.map(f => this.renderFactCard(f))
+                    }
                 </div>
 
                 <div class="profile-card" style="grid-column:1/-1;">
@@ -421,33 +431,49 @@ export class MemoryView extends LitElement {
                         <span class="muted">Set in AI Customization</span>
                     </div>
                     <div class="profile-card-body">
-                        ${this.profile?.name
-                            ? html`<div class="profile-row"><span class="profile-key">Name</span><span class="profile-value">${this.profile.name}</span></div>`
-                            : ''}
-                        ${this.profile?.targetRole
-                            ? html`<div class="profile-row"><span class="profile-key">Target Role</span><span class="profile-value">${this.profile.targetRole}</span></div>`
-                            : ''}
-                        ${this.profile?.experienceSummary
-                            ? html`<div class="profile-row">
-                                  <span class="profile-key">Background</span><span class="profile-value">${this.profile.experienceSummary}</span>
-                              </div>`
-                            : ''}
-                        ${this.profile?.keySkills?.length > 0
-                            ? html`<div class="profile-row">
-                                  <span class="profile-key">Key Skills</span><span class="profile-value">${this.profile.keySkills.join(', ')}</span>
-                              </div>`
-                            : ''}
-                        ${this.profile?.preferredTone
-                            ? html`<div class="profile-row">
-                                  <span class="profile-key">Preferred Tone</span><span class="profile-value">${this.profile.preferredTone}</span>
-                              </div>`
-                            : ''}
-                        ${!this.profile?.name &&
-                        !this.profile?.targetRole &&
-                        !this.profile?.experienceSummary &&
-                        !this.profile?.keySkills?.length
-                            ? html`<div class="profile-row"><span class="profile-value empty">No profile data. Set up in AI Customization > About Me.</span></div>`
-                            : ''}
+                        ${
+                            this.profile?.name
+                                ? html`<div class="profile-row">
+                                      <span class="profile-key">Name</span><span class="profile-value">${this.profile.name}</span>
+                                  </div>`
+                                : ''
+                        }
+                        ${
+                            this.profile?.targetRole
+                                ? html`<div class="profile-row">
+                                      <span class="profile-key">Target Role</span><span class="profile-value">${this.profile.targetRole}</span>
+                                  </div>`
+                                : ''
+                        }
+                        ${
+                            this.profile?.experienceSummary
+                                ? html`<div class="profile-row">
+                                      <span class="profile-key">Background</span><span class="profile-value">${this.profile.experienceSummary}</span>
+                                  </div>`
+                                : ''
+                        }
+                        ${
+                            this.profile?.keySkills?.length > 0
+                                ? html`<div class="profile-row">
+                                      <span class="profile-key">Key Skills</span
+                                      ><span class="profile-value">${this.profile.keySkills.join(', ')}</span>
+                                  </div>`
+                                : ''
+                        }
+                        ${
+                            this.profile?.preferredTone
+                                ? html`<div class="profile-row">
+                                      <span class="profile-key">Preferred Tone</span><span class="profile-value">${this.profile.preferredTone}</span>
+                                  </div>`
+                                : ''
+                        }
+                        ${
+                            !this.profile?.name && !this.profile?.targetRole && !this.profile?.experienceSummary && !this.profile?.keySkills?.length
+                                ? html`<div class="profile-row">
+                                      <span class="profile-value empty">No profile data. Set up in AI Customization > About Me.</span>
+                                  </div>`
+                                : ''
+                        }
                     </div>
                 </div>
             </div>

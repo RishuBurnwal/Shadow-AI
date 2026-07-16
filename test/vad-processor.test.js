@@ -192,8 +192,7 @@ test('alternating frames (noise) does not trigger speech start', () => {
     }
     // Speech frames never reached MIN_SPEECH_FRAMES consecutively
     assert.equal(v.didSpeechJustStart(), false, 'Alternating frames should not trigger speech start');
-    assert.equal(v.consecutiveSpeech < 3, true,
-        'Speech frame count should never reach minimum with alternating frames');
+    assert.equal(v.consecutiveSpeech < 3, true, 'Speech frame count should never reach minimum with alternating frames');
 });
 
 test('zero-length silence requirement never fires', () => {

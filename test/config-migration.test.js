@@ -64,8 +64,8 @@ test('config migration — old v0 data is preserved and upgraded to v2', () => {
 
     const config = storage.getConfig();
     assert.equal(config.configVersion, 2);
-    assert.equal(config.onboarded, true);           // preserved from v0
-    assert.equal(config.layout, 'compact');          // preserved from v0
+    assert.equal(config.onboarded, true); // preserved from v0
+    assert.equal(config.layout, 'compact'); // preserved from v0
     assert.equal(config.customField, 'should-survive'); // extra field preserved
 });
 
@@ -77,8 +77,8 @@ test('config migration — v1 data is preserved and upgraded to v2', () => {
 
     const config = storage.getConfig();
     assert.equal(config.configVersion, 2);
-    assert.equal(config.onboarded, true);       // preserved
-    assert.equal(config.layout, 'wide');        // preserved
+    assert.equal(config.onboarded, true); // preserved
+    assert.equal(config.layout, 'wide'); // preserved
     assert.equal(config.extraField, 'keep-me'); // extra field preserved
 
     // Preferences should also be preserved
@@ -120,7 +120,7 @@ test('config migration — current v2 config remains unchanged', () => {
 
     const config = storage.getConfig();
     assert.equal(config.configVersion, 2);
-    assert.equal(config.userField, 'my-value');  // fully preserved
+    assert.equal(config.userField, 'my-value'); // fully preserved
 });
 
 test('config migration — preferences migration adds missing defaults', () => {
@@ -130,10 +130,10 @@ test('config migration — preferences migration adds missing defaults', () => {
     storage.initializeStorage();
 
     const prefs = storage.getPreferences();
-    assert.equal(prefs.customPrompt, 'hello');        // preserved
-    assert.equal(prefs.selectedLanguage, 'fr-FR');     // preserved
-    assert.equal(typeof prefs.fontSize, 'string');     // default filled
-    assert.equal(typeof prefs.sessionName, 'string');  // default filled
+    assert.equal(prefs.customPrompt, 'hello'); // preserved
+    assert.equal(prefs.selectedLanguage, 'fr-FR'); // preserved
+    assert.equal(typeof prefs.fontSize, 'string'); // default filled
+    assert.equal(typeof prefs.sessionName, 'string'); // default filled
     assert.equal(typeof prefs.backgroundTransparency, 'number'); // default filled
 });
 
@@ -146,10 +146,10 @@ test('config migration — clearAllData wipes everything and reinitializes', () 
 
     const config = storage.getConfig();
     assert.equal(config.configVersion, 2);
-    assert.equal(config.onboarded, false);  // reset to default
+    assert.equal(config.onboarded, false); // reset to default
 
     const creds = storage.getCredentials();
-    assert.equal(creds.groqApiKey, '');  // wiped
+    assert.equal(creds.groqApiKey, ''); // wiped
 });
 
 test('config migration — credentials survive across migration', () => {

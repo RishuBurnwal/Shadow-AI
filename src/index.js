@@ -58,7 +58,11 @@ app.whenReady().then(async () => {
     // Signal readiness to the Python launcher (written AFTER all setup completes)
     const readyMarker = process.env.SHADOW_AI_READY_MARKER;
     if (readyMarker) {
-        try { fs.writeFileSync(readyMarker, '', 'utf8'); } catch { /* best-effort */ }
+        try {
+            fs.writeFileSync(readyMarker, '', 'utf8');
+        } catch {
+            /* best-effort */
+        }
     }
 });
 
@@ -354,7 +358,11 @@ function setupStorageIpcHandlers() {
                         message: 'Resume Sync: Sending your resume text to the AI provider for skill extraction.',
                     });
                 }
-                try { storage.updatePreference('resumeSyncNotified', true); } catch { /* best-effort */ }
+                try {
+                    storage.updatePreference('resumeSyncNotified', true);
+                } catch {
+                    /* best-effort */
+                }
             }
             const resumeSync = require('./skills/resumeSync');
             const result = await resumeSync.action({ resumeText });

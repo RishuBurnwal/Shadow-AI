@@ -776,7 +776,6 @@ export class AssistantView extends LitElement {
                       `
                     : ''
             }
-
             ${
                 this.interimTranscription && this.interimTranscription.text
                     ? html`

@@ -103,9 +103,7 @@ function defaultCredentials() {
 
 /** Derive provider-key mapping for env-file sync */
 function providerKeyMapping() {
-    return Object.fromEntries(
-        PROVIDERS.map(p => [p.id, { envKey: p.envKey, credential: p.credentialKey }])
-    );
+    return Object.fromEntries(PROVIDERS.map(p => [p.id, { envKey: p.envKey, credential: p.credentialKey }]));
 }
 
 /** Build a lookup map { id → label } for the UI */

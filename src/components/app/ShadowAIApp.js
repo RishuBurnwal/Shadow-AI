@@ -611,7 +611,7 @@ export class ShadowAIApp extends LitElement {
             this.responseTextOpacity = prefs.responseTextOpacity ?? 1;
             this.responseTextColor = /^#[0-9a-f]{6}$/i.test(prefs.responseTextColor) ? prefs.responseTextColor : '#f5f5f5';
 
-                const prefs2 = await shadowAI.storage.getPreferences();
+            const prefs2 = await shadowAI.storage.getPreferences();
             this._privacyMode = prefs2.privacyMode ?? false;
 
             this._storageLoaded = true;

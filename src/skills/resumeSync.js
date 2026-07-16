@@ -7,8 +7,7 @@
 const skill = {
     id: 'resume-sync',
     label: 'Resume Sync',
-    description:
-        'Paste a resume and auto-fill your profile (name, skills, experience) using AI. Review before saving.',
+    description: 'Paste a resume and auto-fill your profile (name, skills, experience) using AI. Review before saving.',
 
     // Available for all profiles
     isEnabledForProfile() {
@@ -80,7 +79,12 @@ Return ONLY the JSON object, no other text.`;
                 name: typeof parsed.name === 'string' ? parsed.name.trim() : '',
                 targetRole: typeof parsed.targetRole === 'string' ? parsed.targetRole.trim() : '',
                 experienceSummary: typeof parsed.experienceSummary === 'string' ? parsed.experienceSummary.trim() : '',
-                keySkills: Array.isArray(parsed.keySkills) ? parsed.keySkills.filter(s => typeof s === 'string').map(s => s.trim()).filter(Boolean) : [],
+                keySkills: Array.isArray(parsed.keySkills)
+                    ? parsed.keySkills
+                          .filter(s => typeof s === 'string')
+                          .map(s => s.trim())
+                          .filter(Boolean)
+                    : [],
                 preferredTone: 'professional',
             };
 

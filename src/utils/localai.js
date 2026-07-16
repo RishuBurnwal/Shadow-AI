@@ -10,9 +10,15 @@ function getGemini() {
     if (!_gemini) _gemini = require('./gemini');
     return _gemini;
 }
-function sendToRenderer(ch, data) { return getGemini().sendToRenderer(ch, data); }
-function initializeNewSession(p, c) { return getGemini().initializeNewSession(p, c); }
-function saveConversationTurn(t, a) { return getGemini().saveConversationTurn(t, a); }
+function sendToRenderer(ch, data) {
+    return getGemini().sendToRenderer(ch, data);
+}
+function initializeNewSession(p, c) {
+    return getGemini().initializeNewSession(p, c);
+}
+function saveConversationTurn(t, a) {
+    return getGemini().saveConversationTurn(t, a);
+}
 
 // ── State ──
 
@@ -132,8 +138,7 @@ async function processVAD(pcm16kBuffer) {
             isSpeaking = true;
             speechBuffers = [];
             lastRollingTranscriptionTime = Date.now();
-            console.log('[LocalAI] Speech started (RMS:', rms.toFixed(4),
-                sileroVad ? ', Silero prob: ' + sileroVad.getProbability().toFixed(4) : '');
+            console.log('[LocalAI] Speech started (RMS:', rms.toFixed(4), sileroVad ? ', Silero prob: ' + sileroVad.getProbability().toFixed(4) : '');
             sendToRenderer('update-status', 'Listening... (speech detected)');
 
             // Start rolling-window transcription timer during speech
@@ -320,7 +325,10 @@ async function handleSpeechEnd(audioData) {
                 }
             }, 50);
             // Safety timeout: don't wait longer than 10 seconds
-            setTimeout(() => { clearInterval(waitAndTranscribe); resolve(); }, 10000);
+            setTimeout(() => {
+                clearInterval(waitAndTranscribe);
+                resolve();
+            }, 10000);
         });
     }
 

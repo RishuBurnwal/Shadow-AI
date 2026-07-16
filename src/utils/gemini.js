@@ -29,19 +29,17 @@ function getLocalAi() {
 // Provider mode: 'byok', 'cloud', or 'local'
 let currentProviderMode = 'byok';
 
-
-
 // Session-scoped state (replaces module-level globals for B3)
 let currentSession = null;
 
 function createSessionState() {
     return {
-        transcription: '',         // currentTranscription
-        groqHistory: [],           // groqConversationHistory
-        messageBuffer: '',         // messageBuffer
-        answerFired: false,        // answerProviderFiredForTurn
-        turnStart: 0,              // turnStartTime
-        lastInputTime: 0,          // lastInputTranscriptionTime
+        transcription: '', // currentTranscription
+        groqHistory: [], // groqConversationHistory
+        messageBuffer: '', // messageBuffer
+        answerFired: false, // answerProviderFiredForTurn
+        turnStart: 0, // turnStartTime
+        lastInputTime: 0, // lastInputTranscriptionTime
     };
 }
 
@@ -75,10 +73,7 @@ function cancelCurrentAnswer() {
 // Models to try in order when connecting a Live session.
 // If GEMINI_LIVE_MODEL is set in env, only that model is attempted.
 // Otherwise all candidates are tried in order until one connects.
-const GEMINI_LIVE_MODEL_CANDIDATES = [
-    'gemini-2.5-flash-native-audio-preview-09-2025',
-    'gemini-2.5-flash-live',
-];
+const GEMINI_LIVE_MODEL_CANDIDATES = ['gemini-2.5-flash-native-audio-preview-09-2025', 'gemini-2.5-flash-live'];
 
 function getGeminiLiveModelCandidates() {
     const envModel = process.env.GEMINI_LIVE_MODEL;
@@ -287,9 +282,7 @@ const { extractFactsFromSession, getMemory, mergeFacts, saveMemory } = require('
 async function generateSessionSummary(history) {
     if (!history || history.length < 2) return '';
 
-    const turns = history.map(t =>
-        `User: ${(t.transcription || '').trim()}\nAssistant: ${(t.ai_response || '').trim()}`
-    ).join('\n\n');
+    const turns = history.map(t => `User: ${(t.transcription || '').trim()}\nAssistant: ${(t.ai_response || '').trim()}`).join('\n\n');
     if (!turns.trim()) return '';
 
     const summaryPrompt = `Summarize the following conversation in 1-2 sentences:\n\n${turns}\n\nSummary:`;
@@ -423,10 +416,11 @@ async function sendToGroq(transcription) {
         incrementCharUsage('groq', modelKey, inputChars + outputChars);
 
         if (cleanedResponse) {
-            if (currentSession) currentSession.groqHistory.push({
-                role: 'assistant',
-                content: cleanedResponse,
-            });
+            if (currentSession)
+                currentSession.groqHistory.push({
+                    role: 'assistant',
+                    content: cleanedResponse,
+                });
 
             saveConversationTurn(transcription, cleanedResponse);
         }
@@ -507,10 +501,11 @@ async function sendToGeminiText(transcription, appendUser = true) {
         incrementCharUsage('gemini', modelToUse, inputChars + outputChars);
 
         if (fullText.trim()) {
-            if (currentSession) currentSession.groqHistory.push({
-                role: 'assistant',
-                content: fullText.trim(),
-            });
+            if (currentSession)
+                currentSession.groqHistory.push({
+                    role: 'assistant',
+                    content: fullText.trim(),
+                });
 
             if (currentSession && currentSession.groqHistory.length > 40) {
                 currentSession.groqHistory = currentSession.groqHistory.slice(-40);
@@ -579,7 +574,10 @@ async function sendToAnswerProvider(transcription) {
 
         const result = await streamWithFallback({
             providers: genericProviders,
-            messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...(currentSession ? currentSession.groqHistory : [])],
+            messages: [
+                { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
+                ...(currentSession ? currentSession.groqHistory : []),
+            ],
             onToken: (token, fullText) => {
                 const displayText = stripThinkingTags(fullText);
                 if (!displayText) return;
@@ -592,7 +590,8 @@ async function sendToAnswerProvider(transcription) {
                     ? `${providerLabel(provider)} unavailable (${reason}). Switching to ${providerLabel(nextProvider)}.`
                     : `${providerLabel(provider)} unavailable (${reason}).`;
                 sendToRenderer('provider-notification', { type: 'warning', message });
-            },                onProviderSelected: ({ provider }) => {
+            },
+            onProviderSelected: ({ provider }) => {
                 sendToRenderer('provider-notification', {
                     type: 'success',
                     message: fallbackOccurred ? `Fallback active: using ${providerLabel(provider)}.` : `Using ${providerLabel(provider)}.`,
@@ -1184,11 +1183,13 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 getLocalAi().processLocalAudio(pcmBuffer);
             } else if (geminiSessionRef.current) {
                 if (isDebug) process.stdout.write('.');
-                geminiSessionRef.current.sendRealtimeInput({
-                    audio: { data: data, mimeType: mimeType },
-                }).catch(err => {
-                    console.error('Error sending system audio:', err);
-                });
+                geminiSessionRef.current
+                    .sendRealtimeInput({
+                        audio: { data: data, mimeType: mimeType },
+                    })
+                    .catch(err => {
+                        console.error('Error sending system audio:', err);
+                    });
             }
         } catch (error) {
             console.error('Error processing system audio:', error);
@@ -1206,11 +1207,13 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 getLocalAi().processLocalAudio(pcmBuffer);
             } else if (geminiSessionRef.current) {
                 if (isDebug) process.stdout.write(',');
-                geminiSessionRef.current.sendRealtimeInput({
-                    audio: { data: data, mimeType: mimeType },
-                }).catch(err => {
-                    console.error('Error sending mic audio:', err);
-                });
+                geminiSessionRef.current
+                    .sendRealtimeInput({
+                        audio: { data: data, mimeType: mimeType },
+                    })
+                    .catch(err => {
+                        console.error('Error sending mic audio:', err);
+                    });
             }
         } catch (error) {
             console.error('Error processing mic audio:', error);
@@ -1330,12 +1333,14 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 const history = conversationHistory;
                 const sid = currentSessionId;
                 // Summary
-                generateSessionSummary(history).then(summary => {
-                    if (summary && sid) {
-                        console.log('Session summary:', summary);
-                        sendToRenderer('save-session-summary', { sessionId: sid, summary });
-                    }
-                }).catch(() => {});
+                generateSessionSummary(history)
+                    .then(summary => {
+                        if (summary && sid) {
+                            console.log('Session summary:', summary);
+                            sendToRenderer('save-session-summary', { sessionId: sid, summary });
+                        }
+                    })
+                    .catch(() => {});
                 // Memory extraction (skipped when privacy mode is on)
                 const prefs = getPreferences();
                 if (!prefs.privacyMode) {
@@ -1345,16 +1350,22 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                             type: 'success',
                             message: 'Memory: Learning new facts from this session (content sent to your AI provider).',
                         });
-                        try { updatePreference('memoryExtractionNotified', true); } catch { /* best-effort */ }
-                    }
-                    extractFactsFromSession(history).then(newFacts => {
-                        if (newFacts.length > 0) {
-                            const existing = getMemory();
-                            const merged = mergeFacts(newFacts, existing);
-                            saveMemory(merged);
-                            console.log(`Memory: extracted ${newFacts.length} new facts (total: ${merged.length})`);
+                        try {
+                            updatePreference('memoryExtractionNotified', true);
+                        } catch {
+                            /* best-effort */
                         }
-                    }).catch(() => {});
+                    }
+                    extractFactsFromSession(history)
+                        .then(newFacts => {
+                            if (newFacts.length > 0) {
+                                const existing = getMemory();
+                                const merged = mergeFacts(newFacts, existing);
+                                saveMemory(merged);
+                                console.log(`Memory: extracted ${newFacts.length} new facts (total: ${merged.length})`);
+                            }
+                        })
+                        .catch(() => {});
                 } else {
                     console.log('Memory extraction skipped (privacy mode active)');
                 }

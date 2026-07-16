@@ -148,14 +148,14 @@ function writeJsonFile(filePath, data) {
 
 const CONFIG_MIGRATIONS = {
     // v0 (no version field) → v1: add version and required fields
-    0: (data) => ({
+    0: data => ({
         ...data,
         configVersion: 1,
         onboarded: data.onboarded ?? false,
         layout: data.layout || 'normal',
     }),
     // v1 → v2: placeholder — all existing fields preserved
-    1: (data) => ({
+    1: data => ({
         ...data,
         configVersion: 2,
     }),
@@ -163,7 +163,7 @@ const CONFIG_MIGRATIONS = {
 
 const PREFERENCES_MIGRATIONS = {
     // v0 (any pre-migration preferences) → current defaults merged over existing
-    0: (data) => ({
+    0: data => ({
         ...DEFAULT_PREFERENCES,
         ...data,
         selectedLanguage: normalizeLanguageCode(data.selectedLanguage),
@@ -352,7 +352,9 @@ function getCredentials() {
         }
     }
     if (decryptionFailed) {
-        console.warn('[Credentials] Some stored credentials could not be decrypted (safeStorage unavailable or key changed). Values reset to empty. Re-enter your API keys in Settings.');
+        console.warn(
+            '[Credentials] Some stored credentials could not be decrypted (safeStorage unavailable or key changed). Values reset to empty. Re-enter your API keys in Settings.'
+        );
     }
     return credentials;
 }

@@ -7,8 +7,7 @@
 const skill = {
     id: 'star-answer',
     label: 'STAR Method Answers',
-    description:
-        'Structures behavioral interview answers using Situation, Task, Action, Result. Uses your stored projects as real examples.',
+    description: 'Structures behavioral interview answers using Situation, Task, Action, Result. Uses your stored projects as real examples.',
 
     isEnabledForProfile(profile) {
         return profile === 'interview';

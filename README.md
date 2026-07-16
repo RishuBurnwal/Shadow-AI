@@ -21,14 +21,14 @@ Use a single `Shadow-AI` checkout as the canonical workspace. The launcher, upda
 
 ## Requirements
 
-| Requirement | Notes |
-| --- | --- |
-| Python | 3.10+ recommended |
-| Node.js | 18+ |
-| npm | Included with Node.js |
-| Git | Required for clone and launcher updates |
-| AI access | At least one hosted API key, or Ollama for local mode |
-| Permissions | Screen capture and microphone/system-audio access |
+| Requirement | Notes                                                 |
+| ----------- | ----------------------------------------------------- |
+| Python      | 3.10+ recommended                                     |
+| Node.js     | 18+                                                   |
+| npm         | Included with Node.js                                 |
+| Git         | Required for clone and launcher updates               |
+| AI access   | At least one hosted API key, or Ollama for local mode |
+| Permissions | Screen capture and microphone/system-audio access     |
 
 Windows is the primary verified platform. macOS uses the bundled `SystemAudioDump` helper. Linux capture availability depends on the desktop environment.
 
@@ -44,17 +44,17 @@ On a fresh checkout, choose `2` for complete installation and setup. The workflo
 
 ### Numbered launcher menu
 
-| Option | Action |
-| ---: | --- |
-| 1 | Run project (default when Enter is pressed) |
-| 2 | Complete installation and setup |
-| 3 | Install or update dependencies |
-| 4 | Build application package |
-| 5 | Update project from GitHub |
-| 6 | Select API provider and launch |
-| 7 | Show API provider status |
-| 8 | Show safe system diagnostics |
-| 0 | Exit |
+| Option | Action                                      |
+| -----: | ------------------------------------------- |
+|      1 | Run project (default when Enter is pressed) |
+|      2 | Complete installation and setup             |
+|      3 | Install or update dependencies              |
+|      4 | Build application package                   |
+|      5 | Update project from GitHub                  |
+|      6 | Select API provider and launch              |
+|      7 | Show API provider status                    |
+|      8 | Show safe system diagnostics                |
+|      0 | Exit                                        |
 
 No command-line attributes are required for normal use.
 
@@ -80,14 +80,14 @@ Set `SHADOW_AI_SILENT=true` to launch Electron without an npm/Command Prompt win
 
 ### Provider and model discovery
 
-| Provider | Key | Model-list request |
-| --- | --- | --- |
-| Groq | `GROQ_API_KEY` | `GET https://api.groq.com/openai/v1/models` |
-| OpenRouter | `OPENROUTER_API_KEY` | `GET https://openrouter.ai/api/v1/models` |
-| OpenAI | `OPENAI_API_KEY` | `GET https://api.openai.com/v1/models` |
-| Perplexity | `PERPLEXITY_API_KEY` | `GET https://api.perplexity.ai/models` |
-| NVIDIA | `NVIDIA_API_KEY` | `GET https://integrate.api.nvidia.com/v1/models` |
-| Gemini | `GEMINI_API_KEY` | paginated `GET https://generativelanguage.googleapis.com/v1beta/models` |
+| Provider   | Key                  | Model-list request                                                      |
+| ---------- | -------------------- | ----------------------------------------------------------------------- |
+| Groq       | `GROQ_API_KEY`       | `GET https://api.groq.com/openai/v1/models`                             |
+| OpenRouter | `OPENROUTER_API_KEY` | `GET https://openrouter.ai/api/v1/models`                               |
+| OpenAI     | `OPENAI_API_KEY`     | `GET https://api.openai.com/v1/models`                                  |
+| Perplexity | `PERPLEXITY_API_KEY` | `GET https://api.perplexity.ai/models`                                  |
+| NVIDIA     | `NVIDIA_API_KEY`     | `GET https://integrate.api.nvidia.com/v1/models`                        |
+| Gemini     | `GEMINI_API_KEY`     | paginated `GET https://generativelanguage.googleapis.com/v1beta/models` |
 
 Model discovery runs for every configured API when provider status is loaded. Opening the model selector forces a fresh request; ordinary refreshes use a five-minute cache. Gemini results are limited to models supporting `generateContent`. If a provider rejects or does not expose model discovery, Shadow AI keeps the last successful catalog or a built-in safe fallback so selection does not break.
 

@@ -55,7 +55,9 @@ export class AICustomizeView extends LitElement {
                 font-size: var(--font-size-sm);
                 cursor: pointer;
                 border-bottom: 2px solid transparent;
-                transition: color var(--transition), border-color var(--transition);
+                transition:
+                    color var(--transition),
+                    border-color var(--transition);
             }
             .tab:hover {
                 color: var(--text-primary);
@@ -204,16 +206,15 @@ export class AICustomizeView extends LitElement {
             }
 
             // Load profile
-                const profile = await shadowAI.storage.getProfile();
-                if (profile && typeof profile === 'object') {
-                    this._profileName = profile.name || '';
-                    this._targetRole = profile.targetRole || '';
-                    this._experienceSummary = profile.experienceSummary || '';
-                    this._keySkills = Array.isArray(profile.keySkills) ? profile.keySkills : [];
-                    this._pastProjects = Array.isArray(profile.pastProjects) ? profile.pastProjects : [];
-                    this._preferredTone = profile.preferredTone || 'professional';
-                    this._resumeText = profile.resumeText || '';
-                }
+            const profile = await shadowAI.storage.getProfile();
+            if (profile && typeof profile === 'object') {
+                this._profileName = profile.name || '';
+                this._targetRole = profile.targetRole || '';
+                this._experienceSummary = profile.experienceSummary || '';
+                this._keySkills = Array.isArray(profile.keySkills) ? profile.keySkills : [];
+                this._pastProjects = Array.isArray(profile.pastProjects) ? profile.pastProjects : [];
+                this._preferredTone = profile.preferredTone || 'professional';
+                this._resumeText = profile.resumeText || '';
             }
             this._profileLoaded = true;
             this.requestUpdate();
@@ -326,23 +327,35 @@ export class AICustomizeView extends LitElement {
     renderSkillsTab() {
         // Get all available skills
         const allSkills = [
-            { id: 'star-answer', label: 'STAR Method Answers', desc: 'Formats behavioral interview answers using Situation, Task, Action, Result. Uses your stored projects as concrete examples.' },
+            {
+                id: 'star-answer',
+                label: 'STAR Method Answers',
+                desc: 'Formats behavioral interview answers using Situation, Task, Action, Result. Uses your stored projects as concrete examples.',
+            },
             { id: 'resume-sync', label: 'Resume Sync', desc: 'Lets you paste a resume and auto-fill your profile fields via AI extraction.' },
         ];
 
         return html`
             <div class="form-grid">
                 <div class="form-help" style="margin-bottom:var(--space-sm);">
-                    Skills add capabilities and instructions tailored to your current profile.
-                    Skills are auto-enabled based on your selected profile and can be toggled individually.
+                    Skills add capabilities and instructions tailored to your current profile. Skills are auto-enabled based on your selected profile
+                    and can be toggled individually.
                 </div>
                 ${allSkills.map(s => {
                     const autoEnabled = s.id === 'star-answer' ? this.selectedProfile === 'interview' : true;
                     const enabled = this._isSkillEnabled(s.id);
                     return html`
-                        <div class="skill-row" style="display:flex;align-items:center;gap:var(--space-md);padding:var(--space-sm) 0;border-bottom:1px solid var(--border);">
+                        <div
+                            class="skill-row"
+                            style="display:flex;align-items:center;gap:var(--space-md);padding:var(--space-sm) 0;border-bottom:1px solid var(--border);"
+                        >
                             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;">
-                                <input type="checkbox" ?checked=${enabled} @change=${e => this._toggleSkill(s.id, e.target.checked)} style="cursor:pointer;" />
+                                <input
+                                    type="checkbox"
+                                    ?checked=${enabled}
+                                    @change=${e => this._toggleSkill(s.id, e.target.checked)}
+                                    style="cursor:pointer;"
+                                />
                                 <span style="font-size:var(--font-size-sm);color:var(--text-primary);font-weight:500;">${s.label}</span>
                             </label>
                             <span style="font-size:var(--font-size-xs);color:var(--text-muted);flex:1;">${s.desc}</span>
@@ -469,10 +482,11 @@ export class AICustomizeView extends LitElement {
                         class="control"
                         style="min-height: 60px;"
                         placeholder="Brief career summary (2-3 sentences)..."
-                        .value=${this._experienceSummary}                                @input=${e => {
-                                    this._experienceSummary = e.target.value;
-                                    this._debounceSave();
-                                }}
+                        .value=${this._experienceSummary}
+                        @input=${e => {
+                            this._experienceSummary = e.target.value;
+                            this._debounceSave();
+                        }}
                     ></textarea>
                 </div>
 
@@ -536,26 +550,41 @@ export class AICustomizeView extends LitElement {
                         class="control"
                         style="min-height: 80px;"
                         placeholder="Paste your full resume here for the AI to reference..."
-                        .value=${this._resumeText}                                @input=${e => {
-                                    this._resumeText = e.target.value;
-                                    this._debounceSave();
-                                }}
+                        .value=${this._resumeText}
+                        @input=${e => {
+                            this._resumeText = e.target.value;
+                            this._debounceSave();
+                        }}
                     ></textarea>
-                    ${this._isSkillEnabled('resume-sync')
-                        ? html`
-                              <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-                                  <button class="tag-add-btn" ?disabled=${this._syncing || !this._resumeText?.trim()} @click=${this._handleResumeSync}>
-                                      ${this._syncing ? 'Extracting...' : 'Sync from Resume'}
-                                  </button>
-                                  ${this._syncResult?.type === 'success'
-                                      ? html`<span style="font-size:var(--font-size-xs);color:var(--success, #4caf50);">Profile fields updated. Review above.</span>`
-                                      : ''}
-                                  ${this._syncResult?.type === 'error'
-                                      ? html`<span style="font-size:var(--font-size-xs);color:var(--danger, #ef4444);">${this._syncResult.message}</span>`
-                                      : ''}
-                              </div>
-                          `
-                        : ''}
+                    ${
+                        this._isSkillEnabled('resume-sync')
+                            ? html`
+                                  <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                                      <button
+                                          class="tag-add-btn"
+                                          ?disabled=${this._syncing || !this._resumeText?.trim()}
+                                          @click=${this._handleResumeSync}
+                                      >
+                                          ${this._syncing ? 'Extracting...' : 'Sync from Resume'}
+                                      </button>
+                                      ${
+                                      this._syncResult?.type === 'success'
+                                          ? html`<span style="font-size:var(--font-size-xs);color:var(--success, #4caf50);"
+                                                >Profile fields updated. Review above.</span
+                                            >`
+                                          : ''
+                                  }
+                                      ${
+                                      this._syncResult?.type === 'error'
+                                          ? html`<span style="font-size:var(--font-size-xs);color:var(--danger, #ef4444);"
+                                                >${this._syncResult.message}</span
+                                            >`
+                                          : ''
+                                  }
+                                  </div>
+                              `
+                            : ''
+                    }
                 </div>
 
                 <div class="profile-actions">
@@ -581,9 +610,7 @@ export class AICustomizeView extends LitElement {
                         <button class="tab ${this._activeTab === 'profile' ? 'active' : ''}" @click=${() => this._switchTab('profile')}>
                             About Me
                         </button>
-                        <button class="tab ${this._activeTab === 'skills' ? 'active' : ''}" @click=${() => this._switchTab('skills')}>
-                            Skills
-                        </button>
+                        <button class="tab ${this._activeTab === 'skills' ? 'active' : ''}" @click=${() => this._switchTab('skills')}>Skills</button>
                     </div>
 
                     <section class="surface">

@@ -717,9 +717,11 @@ export class CustomizeView extends LitElement {
                     <label class="toggle-label" for="privacy-toggle">
                         <strong>Privacy Mode</strong>
                         <span style="display:block;font-size:var(--font-size-xs);color:var(--text-muted);">
-                            ${this.privacyMode
-                                ? 'Memory learning is paused. No new facts will be remembered from sessions.'
-                                : 'When on, the assistant will not remember new facts from your conversations.'}
+                            ${
+                                this.privacyMode
+                                    ? 'Memory learning is paused. No new facts will be remembered from sessions.'
+                                    : 'When on, the assistant will not remember new facts from your conversations.'
+                            }
                         </span>
                     </label>
                 </div>

@@ -184,9 +184,13 @@ async function streamWithFallback({
                 const onExternalAbort = () => controller.abort();
                 externalSignal.addEventListener('abort', onExternalAbort, { once: true });
                 // Clean up listener if the internal controller fires first
-                controller.signal.addEventListener('abort', () => {
-                    externalSignal.removeEventListener('abort', onExternalAbort);
-                }, { once: true });
+                controller.signal.addEventListener(
+                    'abort',
+                    () => {
+                        externalSignal.removeEventListener('abort', onExternalAbort);
+                    },
+                    { once: true }
+                );
             }
 
             try {
@@ -205,7 +209,7 @@ async function streamWithFallback({
                 clearTimeout(timeoutId);
                 // Wrap AbortError into a user-friendly timeout message
                 if (fetchError.name === 'AbortError') {
-                    const timeoutError = new Error('Request timed out after ' + (PROVIDER_REQUEST_TIMEOUT_MS / 1000) + 's');
+                    const timeoutError = new Error('Request timed out after ' + PROVIDER_REQUEST_TIMEOUT_MS / 1000 + 's');
                     timeoutError.status = 408;
                     throw timeoutError;
                 }

@@ -126,6 +126,13 @@ Shadow-AI_Audit_Report.docx
 Shadow-AI_Fixing_Plan_and_Prompt.md
 shadow_audit_text.txt
 
+# Windows phantom device file (reserved name — always appears untracked)
+nul
+
+# Third-party AI coding-agent tooling files (not project dependencies)
+.reticle.json
+skills-lock.json
+
 # Legacy design archive (active application assets remain tracked)
 src/assets/old/
 

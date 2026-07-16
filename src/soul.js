@@ -105,13 +105,18 @@ function getProfile() {
                 decryptionFailed = true;
                 // safeStorage unavailable — try reading plaintext fallback
                 const defaultVal = DEFAULT_PROFILE[key];
-                try { profile[key] = Array.isArray(defaultVal) ? JSON.parse(val) : val; }
-                catch { profile[key] = defaultVal; }
+                try {
+                    profile[key] = Array.isArray(defaultVal) ? JSON.parse(val) : val;
+                } catch {
+                    profile[key] = defaultVal;
+                }
             }
         }
     }
     if (decryptionFailed) {
-        console.warn('[Profile] Some profile fields could not be decrypted (safeStorage unavailable or key changed). Check your profile in AI Customization > About Me.');
+        console.warn(
+            '[Profile] Some profile fields could not be decrypted (safeStorage unavailable or key changed). Check your profile in AI Customization > About Me.'
+        );
     }
     return profile;
 }

@@ -164,8 +164,7 @@ test('sendToAnswerProvider is triggered on turnComplete, not generationComplete'
     });
 
     assert.equal(answerProviderCallCount, 2, 'generationComplete should trigger if turnComplete was missed');
-    assert.equal(answerProviderCalledWith, 'What about tomorrow?',
-        'Fallback answer should be called with the second transcription');
+    assert.equal(answerProviderCalledWith, 'What about tomorrow?', 'Fallback answer should be called with the second transcription');
 
     // Verify answerFired resets properly
     assert.equal(answerFired, false, 'answerFired should reset after generationComplete');

@@ -14,8 +14,7 @@ const { app } = require('electron');
 
 // ── Constants ──
 
-const SILERO_VAD_URL =
-    'https://github.com/snakers4/silero-vad/raw/v5.1/files/silero_vad.onnx';
+const SILERO_VAD_URL = 'https://github.com/snakers4/silero-vad/raw/v5.1/files/silero_vad.onnx';
 const MODEL_FILENAME = 'silero_vad.onnx';
 const FRAME_SIZE = 512; // 32ms at 16kHz
 const SAMPLE_RATE = 16000;
@@ -77,7 +76,11 @@ function downloadModel(url, destPath, redirectCount = 0) {
                     resolve(destPath);
                     return;
                 }
-                console.warn('[SileroVAD] Cached model checksum mismatch (expected', EXPECTED_SHA256.slice(0, 12) + '...' + ', got', actualHash.slice(0, 12) + '...' + '). Re-downloading.');
+                console.warn(
+                    '[SileroVAD] Cached model checksum mismatch (expected',
+                    EXPECTED_SHA256.slice(0, 12) + '...' + ', got',
+                    actualHash.slice(0, 12) + '...' + '). Re-downloading.'
+                );
                 fs.unlinkSync(destPath);
             }
         }
@@ -100,7 +103,9 @@ function downloadModel(url, destPath, redirectCount = 0) {
                         return;
                     }
 
-                    downloadModel(response.headers.location, destPath, redirectCount + 1).then(resolve).catch(reject);
+                    downloadModel(response.headers.location, destPath, redirectCount + 1)
+                        .then(resolve)
+                        .catch(reject);
                     return;
                 }
 
@@ -120,9 +125,11 @@ function downloadModel(url, destPath, redirectCount = 0) {
                     const actualHash = computeSha256(tempPath);
                     if (actualHash !== EXPECTED_SHA256) {
                         if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-                        reject(new Error(
-                            `Downloaded model checksum mismatch. Expected ${EXPECTED_SHA256.slice(0, 12)}..., got ${actualHash.slice(0, 12)}...`
-                        ));
+                        reject(
+                            new Error(
+                                `Downloaded model checksum mismatch. Expected ${EXPECTED_SHA256.slice(0, 12)}..., got ${actualHash.slice(0, 12)}...`
+                            )
+                        );
                         return;
                     }
 

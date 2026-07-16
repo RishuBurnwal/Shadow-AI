@@ -90,9 +90,7 @@ function setProviderKey(provider, value) {
 
 function getProviderStatus() {
     const credentials = syncProviderEnvironment();
-    return Object.fromEntries(
-        Object.entries(PROVIDER_KEYS).map(([provider, { credential }]) => [provider, Boolean(credentials[credential])])
-    );
+    return Object.fromEntries(Object.entries(PROVIDER_KEYS).map(([provider, { credential }]) => [provider, Boolean(credentials[credential])]));
 }
 /* node:coverage enable */
 

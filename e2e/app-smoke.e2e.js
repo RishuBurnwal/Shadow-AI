@@ -79,7 +79,9 @@ test.describe('Shadow AI', () => {
         const hasBar = await win.evaluate(() => !!document.querySelector('shadow-ai-app')?.shadowRoot?.querySelector('.top-drag-bar'));
         expect(hasBar).toBe(true);
 
-        const hasLights = await win.evaluate(() => document.querySelector('shadow-ai-app')?.shadowRoot?.querySelectorAll('.traffic-light').length === 3);
+        const hasLights = await win.evaluate(
+            () => document.querySelector('shadow-ai-app')?.shadowRoot?.querySelectorAll('.traffic-light').length === 3
+        );
         expect(hasLights).toBe(true);
     });
 

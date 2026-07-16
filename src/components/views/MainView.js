@@ -585,10 +585,7 @@ export class MainView extends LitElement {
     async _loadFromStorage() {
         try {
             const providerStatus = await shadowAI.getProviderStatus().catch(() => ({}));
-            const [prefs, creds] = await Promise.all([
-                shadowAI.storage.getPreferences(),
-                shadowAI.storage.getCredentials().catch(() => ({})),
-            ]);
+            const [prefs, creds] = await Promise.all([shadowAI.storage.getPreferences(), shadowAI.storage.getCredentials().catch(() => ({}))]);
             this._providerStatus = providerStatus;
 
             const storedMode = prefs.providerMode || 'byok';
@@ -985,27 +982,29 @@ export class MainView extends LitElement {
             <button class="add-api-button" @click=${() => (this._showApiManager = !this._showApiManager)}>
                 ${this._showApiManager ? '− Hide API options' : '+ Add API'}
             </button>
-            ${this._showApiManager
-                ? html`<div class="additional-api-list">
-                      ${additionalProviders.map(
-                          provider => html`<div class="form-group">
-                              <label class="form-label">${provider.name} API Key</label>
-                              <input
-                                  type="password"
-                                  autocomplete="off"
-                                  placeholder=${this._providerStatus[provider.status] ? 'Loaded from .env' : 'Paste API key'}
-                                  .value=${this._apiKeys[provider.credential] || ''}
-                                  @change=${event => this._saveAdditionalApiKey(provider.status, provider.credential, event.target.value)}
-                              />
-                              <div class="form-hint">
-                                  <span class="link" @click=${() => this.onExternalLink(provider.url)}>Get ${provider.name} key</span>
-                                  ${this._providerStatus[provider.status] ? html`<span> · Configured</span>` : ''}
-                              </div>
-                          </div>`
+            ${
+                this._showApiManager
+                    ? html`<div class="additional-api-list">
+                          ${additionalProviders.map(
+                          provider =>
+                              html`<div class="form-group">
+                                  <label class="form-label">${provider.name} API Key</label>
+                                  <input
+                                      type="password"
+                                      autocomplete="off"
+                                      placeholder=${this._providerStatus[provider.status] ? 'Loaded from .env' : 'Paste API key'}
+                                      .value=${this._apiKeys[provider.credential] || ''}
+                                      @change=${event => this._saveAdditionalApiKey(provider.status, provider.credential, event.target.value)}
+                                  />
+                                  <div class="form-hint">
+                                      <span class="link" @click=${() => this.onExternalLink(provider.url)}>Get ${provider.name} key</span>
+                                      ${this._providerStatus[provider.status] ? html`<span> · Configured</span>` : ''}
+                                  </div>
+                              </div>`
                       )}
-                  </div>`
-                : ''}
-
+                      </div>`
+                    : ''
+            }
             ${this._renderStartButton()} ${this._renderDivider()}
 
             <!-- Cloud promo intentionally removed from the active UI. -->
