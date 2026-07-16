@@ -37,6 +37,7 @@ let sileroVad = null;
 let rollingTranscriptionInterval = null;
 const ROLLING_WINDOW_MS = 2000; // Transcribe partial audio every 2s during speech
 let lastRollingTranscriptionTime = 0;
+let _isTranscribing = false; // In-flight guard to prevent concurrent transcribeAudio() calls
 
 // VAD configuration
 // Silence frames reduced from 15→5 (500ms vs 1500ms) now that Silero VAD provides robust detection
@@ -168,6 +169,8 @@ function startRollingTranscription() {
     // Check audio every ROLLING_WINDOW_MS during active speech
     rollingTranscriptionInterval = setInterval(async () => {
         if (!isSpeaking || speechBuffers.length === 0) return;
+        // Skip if another transcription is already in-flight (P1-02 guard)
+        if (_isTranscribing) return;
 
         const now = Date.now();
         if (now - lastRollingTranscriptionTime < ROLLING_WINDOW_MS) return;
@@ -177,6 +180,7 @@ function startRollingTranscription() {
         const audioSoFar = Buffer.concat(speechBuffers);
         if (audioSoFar.length < 32000) return; // Need at least ~1s of audio
 
+        _isTranscribing = true;
         try {
             const partialText = await transcribeAudio(audioSoFar);
             if (partialText && partialText.trim().length > 2) {
@@ -189,6 +193,8 @@ function startRollingTranscription() {
             }
         } catch (err) {
             // Rolling transcription is best-effort; ignore errors silently
+        } finally {
+            _isTranscribing = false;
         }
     }, ROLLING_WINDOW_MS);
 }
@@ -299,7 +305,28 @@ async function handleSpeechEnd(audioData) {
         return;
     }
 
-    const transcription = await transcribeAudio(audioData);
+    // Wait for any in-flight rolling transcription to finish (P1-02 guard)
+    if (_isTranscribing) {
+        console.log('[LocalAI] Waiting for in-flight transcription to complete...');
+        await new Promise(resolve => {
+            const waitAndTranscribe = setInterval(() => {
+                if (!_isTranscribing) {
+                    clearInterval(waitAndTranscribe);
+                    resolve();
+                }
+            }, 50);
+            // Safety timeout: don't wait longer than 10 seconds
+            setTimeout(() => { clearInterval(waitAndTranscribe); resolve(); }, 10000);
+        });
+    }
+
+    _isTranscribing = true;
+    let transcription;
+    try {
+        transcription = await transcribeAudio(audioData);
+    } finally {
+        _isTranscribing = false;
+    }
 
     // Send final transcription to renderer (replacing any interim partial text)
     if (transcription && transcription.trim().length > 0) {
@@ -484,6 +511,7 @@ function closeLocalSession() {
     currentSystemPrompt = null;
     sileroVad = null;
     lastRollingTranscriptionTime = 0;
+    _isTranscribing = false;
     stopRollingTranscription();
     // Note: whisperPipeline is kept loaded to avoid reloading on next session
 }
