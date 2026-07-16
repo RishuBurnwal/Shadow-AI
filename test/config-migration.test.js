@@ -139,6 +139,7 @@ test('config migration — preferences migration adds missing defaults', () => {
     assert.equal(typeof prefs.backgroundTransparency, 'number'); // default filled
     assert.equal(prefs.vadSilenceMs, 500);
     assert.equal(prefs.responseDelayMs, 1500);
+    assert.equal(prefs.automaticResponse, true);
     assert.equal(prefs.promptSkills.length, 6);
     assert.equal(prefs.starterSkillsVersion, 1);
 });

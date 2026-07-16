@@ -770,9 +770,15 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             if (transcription) {
                                 logLatency('cloud', 'speech_end_to_transcription_ready', Date.now() - speechEndedAt);
                                 sendToRenderer('interim-transcription', { text: finalText, isFinal: true });
-                                answerDebouncer.setDelay(getPreferences().responseDelayMs);
+                                const preferences = getPreferences();
+                                if (!preferences.automaticResponse) {
+                                    sendToRenderer('update-status', 'Review the question, then click OK');
+                                    return;
+                                }
+                                answerDebouncer.setDelay(preferences.responseDelayMs);
                                 sendToRenderer('update-status', 'Waiting for complete question...');
                                 answerDebouncer.schedule(transcription, completeTranscription => {
+                                    if (!getPreferences().automaticResponse) return;
                                     s.answerRequestedAt = Date.now();
                                     transitionTurn(s, 'ANSWER_STARTED');
                                     return Promise.resolve(sendToAnswerProvider(completeTranscription)).finally(() =>

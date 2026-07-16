@@ -264,6 +264,39 @@ export class AssistantView extends LitElement {
             opacity: 0.55;
         }
 
+        .caption-editor {
+            flex: 1;
+            min-width: 0;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            padding: var(--space-xs);
+        }
+
+        .approve-btn,
+        .response-mode button {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: var(--space-xs) var(--space-sm);
+        }
+
+        .approve-btn,
+        .response-mode button.active {
+            border-color: var(--accent);
+            color: var(--text-primary);
+        }
+
+        .response-mode {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-xs);
+            padding: var(--space-xs) var(--space-md) 0;
+        }
+
         /* ── Bottom input bar ── */
 
         .input-bar {
@@ -369,6 +402,10 @@ export class AssistantView extends LitElement {
         responseTextOpacity: { type: Number },
         responseTextColor: { type: String },
         interimTranscription: { type: Object },
+        automaticResponse: { type: Boolean },
+        onAutomaticResponseChange: { type: Function },
+        onApproveQuestion: { type: Function },
+        reviewQuestion: { type: String, state: true },
         isAnalyzing: { type: Boolean, state: true },
     };
 
@@ -380,6 +417,10 @@ export class AssistantView extends LitElement {
         this.onSendText = () => {};
         this.responseTextOpacity = 1;
         this.responseTextColor = '#f5f5f5';
+        this.automaticResponse = true;
+        this.onAutomaticResponseChange = () => {};
+        this.onApproveQuestion = () => {};
+        this.reviewQuestion = '';
         this.isAnalyzing = false;
         this._animFrame = null;
     }
@@ -716,6 +757,10 @@ export class AssistantView extends LitElement {
 
     updated(changedProperties) {
         super.updated(changedProperties);
+
+        if (changedProperties.has('interimTranscription') && this.interimTranscription?.isFinal) {
+            this.reviewQuestion = this.interimTranscription.text || '';
+        }
         if (changedProperties.has('responses') || changedProperties.has('currentResponseIndex')) {
             this.updateResponseContent();
         }
@@ -799,13 +844,42 @@ export class AssistantView extends LitElement {
                     ? html`
                           <div class="caption-bar">
                               <span class="caption-label">${this.interimTranscription.isFinal ? 'INTERVIEWER:' : 'LISTENING:'}</span>
-                              <span class="caption-text ${this.interimTranscription.isFinal ? 'final' : 'partial'}"
-                                  >${this.interimTranscription.text}</span
-                              >
+                              ${
+                                  this.interimTranscription.isFinal && !this.automaticResponse
+                                      ? html`
+                                            <input
+                                                class="caption-editor"
+                                                .value=${this.reviewQuestion}
+                                                @input=${event => (this.reviewQuestion = event.target.value)}
+                                                aria-label="Review interviewer question"
+                                            />
+                                            <button class="approve-btn" @click=${() => this.onApproveQuestion(this.reviewQuestion)}>OK</button>
+                                        `
+                                      : html`<span class="caption-text ${this.interimTranscription.isFinal ? 'final' : 'partial'}"
+                                            >${this.interimTranscription.text}</span
+                                        >`
+                              }
                           </div>
                       `
                     : ''
             }
+
+            <div class="response-mode">
+                <button
+                    class=${this.automaticResponse ? 'active' : ''}
+                    @click=${() => this.onAutomaticResponseChange(true)}
+                    title="Generate automatically after the configured delay"
+                >
+                    Automatic
+                </button>
+                <button
+                    class=${!this.automaticResponse ? 'active' : ''}
+                    @click=${() => this.onAutomaticResponseChange(false)}
+                    title="Review or edit each recognized question before answering"
+                >
+                    Manual
+                </button>
+            </div>
 
             <div class="input-bar">
                 <div class="input-bar-inner">

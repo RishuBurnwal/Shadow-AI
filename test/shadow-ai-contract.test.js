@@ -161,6 +161,19 @@ test('response tab pairs the interviewer question with the candidate answer', ()
     assert.match(assistantSource, /'INTERVIEWER:'/);
 });
 
+test('manual response mode holds an editable recognized question until approval', () => {
+    const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+    const assistantSource = fs.readFileSync(path.join(root, 'src/components/views/AssistantView.js'), 'utf8');
+    const geminiSource = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
+    const localSource = fs.readFileSync(path.join(root, 'src/utils/localai.js'), 'utf8');
+    assert.match(appSource, /updatePreference\('automaticResponse', enabled\)/);
+    assert.match(assistantSource, /aria-label="Review interviewer question"/);
+    assert.match(assistantSource, />\s*Automatic\s*<\/button>/);
+    assert.match(assistantSource, />\s*Manual\s*<\/button>/);
+    assert.match(geminiSource, /if \(!preferences\.automaticResponse\)/);
+    assert.match(localSource, /if \(!preferences\.automaticResponse\)/);
+});
+
 test('production credential storage never falls back to plaintext', () => {
     const source = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
 

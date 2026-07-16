@@ -414,10 +414,15 @@ async function handleSpeechEnd(audioData) {
     }
 
     const { getPreferences } = require('../storage');
-    answerDebouncer.setDelay(getPreferences().responseDelayMs);
+    const preferences = getPreferences();
+    if (!preferences.automaticResponse) {
+        sendToRenderer('update-status', 'Review the question, then click OK');
+        return;
+    }
+    answerDebouncer.setDelay(preferences.responseDelayMs);
     sendToRenderer('update-status', 'Waiting for complete question...');
     answerDebouncer.schedule(transcription, async completeTranscription => {
-        if (!isLocalActive) return;
+        if (!isLocalActive || !getPreferences().automaticResponse) return;
         sendToRenderer('update-status', 'Generating response...');
         answerRequestedAt = Date.now();
         await sendToOllama(completeTranscription);

@@ -52,6 +52,7 @@ const DEFAULT_PREFERENCES = {
     whisperModel: 'Xenova/whisper-small',
     vadSilenceMs: 500,
     responseDelayMs: 1500,
+    automaticResponse: true,
     privacyMode: false,
     promptSkills: getStarterSkills(),
     starterSkillsVersion: STARTER_SKILLS_VERSION,

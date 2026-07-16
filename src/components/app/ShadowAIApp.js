@@ -533,6 +533,7 @@ export class ShadowAIApp extends LitElement {
         responseTextOpacity: { type: Number },
         responseTextColor: { type: String },
         interimTranscription: { type: Object },
+        automaticResponse: { type: Boolean },
         _providerNotification: { state: true },
         _providerStatus: { state: true },
     };
@@ -565,6 +566,7 @@ export class ShadowAIApp extends LitElement {
         this.responseTextOpacity = 1;
         this.responseTextColor = '#f5f5f5';
         this.interimTranscription = null;
+        this.automaticResponse = true;
         this._privacyMode = false;
         this._providerNotification = null;
         this._providerNotificationTimer = null;
@@ -613,6 +615,7 @@ export class ShadowAIApp extends LitElement {
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.responseTextOpacity = prefs.responseTextOpacity ?? 1;
             this.responseTextColor = /^#[0-9a-f]{6}$/i.test(prefs.responseTextColor) ? prefs.responseTextColor : '#f5f5f5';
+            this.automaticResponse = prefs.automaticResponse !== false;
 
             const prefs2 = await shadowAI.storage.getPreferences();
             this._privacyMode = prefs2.privacyMode ?? false;
@@ -1004,6 +1007,19 @@ export class ShadowAIApp extends LitElement {
         }
     }
 
+    async handleAutomaticResponseChange(enabled) {
+        this.automaticResponse = enabled;
+        await shadowAI.storage.updatePreference('automaticResponse', enabled);
+    }
+
+    async handleApprovedQuestion(question) {
+        const editedQuestion = String(question || '').trim();
+        if (!editedQuestion) return;
+        this._pendingInterviewerQuestion = editedQuestion;
+        this.interimTranscription = { text: editedQuestion, isFinal: true };
+        await this.handleSendText(editedQuestion);
+    }
+
     handleResponseIndexChanged(e) {
         this.currentResponseIndex = e.detail.index;
         this.shouldAnimateResponse = false;
@@ -1093,6 +1109,9 @@ export class ShadowAIApp extends LitElement {
                         .responseTextOpacity=${this.responseTextOpacity}
                         .responseTextColor=${this.responseTextColor}
                         .interimTranscription=${this.interimTranscription}
+                        .automaticResponse=${this.automaticResponse}
+                        .onAutomaticResponseChange=${enabled => this.handleAutomaticResponseChange(enabled)}
+                        .onApproveQuestion=${question => this.handleApprovedQuestion(question)}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
                         @response-index-changed=${this.handleResponseIndexChanged}
