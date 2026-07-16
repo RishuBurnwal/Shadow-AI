@@ -39,6 +39,9 @@ const ROLLING_WINDOW_MS = 2000; // Transcribe partial audio every 2s during spee
 let lastRollingTranscriptionTime = 0;
 let _isTranscribing = false; // In-flight guard to prevent concurrent transcribeAudio() calls
 
+// Cached language preference for Whisper transcription (set in initializeLocalSession)
+let currentWhisperLanguage = 'en';
+
 // VAD configuration
 // Silence frames reduced from 15→5 (500ms vs 1500ms) now that Silero VAD provides robust detection
 const VAD_MODES = {
@@ -277,10 +280,11 @@ async function transcribeAudio(pcm16kBuffer) {
     try {
         const float32Audio = pcm16ToFloat32(pcm16kBuffer);
 
-        // Whisper expects audio at 16kHz which is what we have
+        // Use the cached language preference (set in initializeLocalSession)
+        // This avoids reading the preferences file from disk on every call.
         const result = await whisperPipeline(float32Audio, {
             sampling_rate: 16000,
-            language: 'en',
+            language: currentWhisperLanguage,
             task: 'transcribe',
         });
 
@@ -415,6 +419,17 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
         // Setup system prompt
         currentSystemPrompt = getSystemPrompt(profile, customPrompt, false);
 
+        // Cache language preference for Whisper (read once, avoid disk I/O on every call)
+        try {
+            const { normalizeLanguageCode, getPreferences } = require('./storage');
+            const prefs = getPreferences();
+            const normalized = normalizeLanguageCode(prefs.selectedLanguage || 'en-US');
+            // Whisper uses 2-letter ISO 639-1 codes; extract from BCP-47 tag
+            currentWhisperLanguage = normalized.split('-')[0] || 'en';
+        } catch {
+            currentWhisperLanguage = 'en';
+        }
+
         // Initialize Ollama client
         ollamaClient = new Ollama({ host: ollamaHost });
         ollamaModel = model;
@@ -512,6 +527,7 @@ function closeLocalSession() {
     sileroVad = null;
     lastRollingTranscriptionTime = 0;
     _isTranscribing = false;
+    currentWhisperLanguage = 'en';
     stopRollingTranscription();
     // Note: whisperPipeline is kept loaded to avoid reloading on next session
 }
