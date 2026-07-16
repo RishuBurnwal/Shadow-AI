@@ -19,6 +19,78 @@ Use a single `Shadow-AI` checkout as the canonical workspace. The launcher, upda
 - Manual prompts, screen analysis, markdown responses, shortcuts, and optional local Ollama/Whisper mode.
 - Hash-based, fast-forward-only GitHub updater that rebuilds and restarts after validation.
 
+## Current completion status
+
+| Measure                    | Completion | Meaning                                                                                                                             |
+| -------------------------- | ---------: | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Original engineering audit |   **100%** | All 17 F/S/A engineering findings from `01_AUDIT_REPORT.md` are implemented or verified.                                            |
+| Fixing plan                |   **100%** | All 12 implementation items from `02_FIXING_PLAN_AND_PROMPT.md` are complete.                                                       |
+| Production readiness       |    **88%** | Windows build, launch, security, local STT, tests, and packaging pass; external-service and cross-platform live validation remains. |
+
+The remaining 12% is validation and release governance, not a known broken core module. The GPL-3.0 distribution decision is external to engineering and must be resolved before treating a paid/closed-source release as ready.
+
+### Audit checklist
+
+#### Speech-to-text and latency
+
+- [x] **F-01:** Gemini Live no longer requests unused AUDIO responses.
+- [x] **F-02:** One turn-state reducer handles completion, fallback, streaming, reconnect, and barge-in.
+- [x] **F-03:** Rolling Whisper inference is bounded to five seconds instead of repeatedly processing an entire growing utterance.
+- [x] **F-04:** Final transcription starts without waiting for a rolling pass. Two simultaneous real CPU Whisper calls were verified.
+- [x] **F-05:** Settings exposes a persisted 300â€“1200 ms end-of-speech silence control, applied live by the backend.
+- [x] **F-06:** Local browser capture requests native 16 kHz audio; 24â†’16 kHz conversion remains a compatibility fallback.
+- [x] **F-07:** Cloud and local pipelines emit structured speech-endâ†’transcript and transcriptâ†’first-token latency measurements.
+- [x] **F-08:** Each approximately 100 ms audio chunk is forwarded immediately; no client-side batching was found.
+
+#### Security
+
+- [x] **S-01:** Renderer uses `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true`, and an allow-listed preload bridge.
+- [x] **S-02:** AI Markdown is sanitized before DOM insertion and unsafe elements, attributes, and URL schemes are rejected.
+- [x] **S-03:** Supported Whisper revisions are immutable and quantized encoder/decoder ONNX weights are SHA-256 verified.
+- [x] **S-04:** Credentials use Electron `safeStorage`; production refuses plaintext fallback.
+- [x] **S-05:** Electron is updated to 40.10.2, Google GenAI to 2.12.0, and the production dependency audit reports zero vulnerabilities.
+
+#### Reliability and QA
+
+- [x] **A-01:** Reconnect resets turn state, preserves history, and stops retrying after success.
+- [x] **A-02:** RMS is explicitly the gate for Silero VAD and silence timing has one persisted user setting.
+- [x] **A-03:** Launcher readiness allows 60 seconds for slower first-run startup and passes a live Windows launch smoke.
+- [x] **A-04:** 72 unit/contract tests and 20 Electron end-to-end tests pass; coverage measurement runs successfully.
+
+### Verified release gates
+
+- [x] 72/72 unit and contract tests pass.
+- [x] 20/20 Electron end-to-end tests pass.
+- [x] Windows Electron Forge packaging passes.
+- [x] The Python launcher starts the application successfully.
+- [x] `npm audit --omit=dev` reports zero vulnerabilities.
+- [x] A real pinned Whisper Tiny CPU model exactly transcribed: `The quick brown fox jumps over the lazy dog.`
+- [x] Two overlapping real Whisper inferences returned the same exact transcript.
+- [x] The source tree contains no detected committed API key/private-key pattern.
+
+### Remaining checklist and known limitations
+
+- [ ] **GPL/commercial release decision:** keep GPL-3.0 source and attribution available to recipients, or obtain a written relicensing agreement. This is not a code fix.
+- [ ] **Hosted-provider live matrix:** run authenticated end-to-end calls against Gemini Live, Groq, OpenRouter, OpenAI, Perplexity, and NVIDIA. Routing and failure behavior are tested without using real secrets, but current live accounts, quotas, and model access were not exercised in the release audit.
+- [ ] **Ollama response integration:** start a local Ollama server, pull the configured model, and verify transcriptionâ†’first-tokenâ†’completed-answer on the target machine. Ollama was not running during the audit.
+- [ ] **Physical audio matrix:** verify microphone and system-loopback capture with real devices and OS permission prompts. Worklet chunking, IPC, VAD, resampling selection, and Whisper inference were tested independently.
+- [ ] **macOS and Linux release matrix:** Windows is verified; macOS `SystemAudioDump`, Linux audio capture, packaging, signing, and permissions require platform-specific runs.
+- [ ] **Coverage expansion:** overall line coverage is 36.6%. Provider routing is substantially better covered, while UI orchestration, external services, and device-error branches need more behavioral tests.
+- [ ] **Development dependency audit:** the packaged production dependency tree is clean, but npm still reports issues in development/packaging tools. Monitor Forge and transitive dependency updates.
+- [ ] **Codebase cleanup:** `src/assets/lit-all-2.7.4.min.js` and the stale `src/components/index.js` barrel may be removable after confirming no external consumer relies on them.
+- [ ] **Repository-wide formatting debt:** the supplied audit documents plus pre-existing `AICustomizeView.js` and `MainView.js` remain outside a clean whole-repository Prettier pass. Files changed for the audit are formatted.
+
+### Partial, false, or broken implementation classification
+
+| Classification                       | Verified result                                                                                                                                                                   |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Partially implemented audit settings | **None found**. VAD timeout, provider/model selection, renderer isolation, credentials, and local sample-rate selection are fully wired through UI, persistence, and backend use. |
+| Falsely implemented audit items      | **None found after remediation**. The previously partial Whisper speech-end and integrity checks were completed and retested.                                                     |
+| Broken modules in tested scope       | **None found**. Unit, desktop e2e, package, launcher, and real STT gates pass.                                                                                                    |
+| Not live-tested modules              | Hosted providers with real credentials, Ollama response generation, physical capture devices, macOS, and Linux. These are explicitly unverified rather than claimed working.      |
+
+Detailed evidence and the finding-by-finding release decision are in [`04_RELEASE_AUDIT_REPORT.md`](04_RELEASE_AUDIT_REPORT.md).
+
 ## Requirements
 
 | Requirement | Notes                                                 |
