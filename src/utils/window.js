@@ -279,12 +279,14 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
                         geminiSessionRef.current = null;
                     }
 
-                    sendToRenderer('clear-sensitive-data');
+                    // Wipe ALL data synchronously from the main process — no async renderer
+                    // round-trip that could race against app.quit().
+                    // storage.clearAllData() deletes the entire config directory,
+                    // including credentials, profile, memory, history, and preferences.
+                    storage.clearAllData();
 
-                    setTimeout(() => {
-                        const { app } = require('electron');
-                        app.quit();
-                    }, 300);
+                    const { app } = require('electron');
+                    app.quit();
                 }
             });
             console.log(`Registered emergencyErase: ${keybinds.emergencyErase}`);
