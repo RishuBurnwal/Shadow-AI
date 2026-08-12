@@ -35,3 +35,11 @@ test('concurrent session starts reuse one in-flight Deepgram connection', () => 
     assert.match(source, /if \(connecting\) return connecting;/);
     assert.match(source, /\.finally\(\(\) => \(connecting = null\)\)/);
 });
+
+test('UtteranceEnd promotes the latest interim when speech_final never arrives', () => {
+    const final = [];
+    const accept = createTranscriptAssembler({ onFinal: text => final.push(text) });
+    accept({ type: 'Results', is_final: false, speech_final: false, channel: { alternatives: [{ transcript: 'What is the capital of France?' }] } });
+    accept({ type: 'UtteranceEnd' });
+    assert.deepEqual(final, ['What is the capital of France?']);
+});
