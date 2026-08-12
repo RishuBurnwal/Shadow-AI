@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 
 let socket = null;
 let keepAlive = null;
+let connecting = null;
 
 function buildListenUrl(language = 'en-US', sampleRate = 24000) {
     const url = new URL('wss://api.deepgram.com/v1/listen');
@@ -41,21 +42,23 @@ function createTranscriptAssembler({ onInterim = () => {}, onFinal = () => {} } 
 }
 
 function connectDeepgram(apiKey, language, callbacks = {}) {
+    if (connecting) return connecting;
     closeDeepgram();
     if (!apiKey || /[\r\n\0]/.test(apiKey)) return Promise.reject(new Error('Deepgram API key is not configured'));
 
-    return new Promise((resolve, reject) => {
+    connecting = new Promise((resolve, reject) => {
         const accept = createTranscriptAssembler(callbacks);
         let opened = false;
-        socket = new WebSocket(buildListenUrl(language), { headers: { Authorization: `Token ${apiKey}` } });
+        const ws = new WebSocket(buildListenUrl(language), { headers: { Authorization: `Token ${apiKey}` } });
+        socket = ws;
         const timeout = setTimeout(() => {
             if (!opened) {
-                socket?.terminate();
+                ws.terminate();
                 reject(new Error('Deepgram connection timeout'));
             }
         }, 10000);
 
-        socket.once('open', () => {
+        ws.once('open', () => {
             opened = true;
             clearTimeout(timeout);
             keepAlive = setInterval(() => {
@@ -64,25 +67,26 @@ function connectDeepgram(apiKey, language, callbacks = {}) {
             callbacks.onOpen?.();
             resolve(true);
         });
-        socket.on('message', data => {
+        ws.on('message', data => {
             try {
                 accept(JSON.parse(data.toString()));
             } catch (error) {
                 callbacks.onError?.(error);
             }
         });
-        socket.on('error', error => {
+        ws.on('error', error => {
             clearTimeout(timeout);
             callbacks.onError?.(error);
             if (!opened) reject(error);
         });
-        socket.on('close', () => {
+        ws.on('close', () => {
             clearInterval(keepAlive);
             keepAlive = null;
-            socket = null;
+            if (socket === ws) socket = null;
             callbacks.onClose?.();
         });
-    });
+    }).finally(() => (connecting = null));
+    return connecting;
 }
 
 function sendDeepgramAudio(buffer) {
