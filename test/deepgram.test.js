@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const { buildListenUrl, createTranscriptAssembler } = require('../src/utils/deepgram');
 
@@ -26,4 +28,10 @@ test('Deepgram results assemble one final utterance without duplicating finalize
 
     assert.deepEqual(interim, ['What is', 'What is your name', 'What is your name?']);
     assert.deepEqual(final, ['What is your name?']);
+});
+
+test('concurrent session starts reuse one in-flight Deepgram connection', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../src/utils/deepgram.js'), 'utf8');
+    assert.match(source, /if \(connecting\) return connecting;/);
+    assert.match(source, /\.finally\(\(\) => \(connecting = null\)\)/);
 });
