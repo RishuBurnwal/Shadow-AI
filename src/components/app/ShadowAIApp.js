@@ -56,8 +56,15 @@ export class ShadowAIApp extends LitElement {
 
         .drag-region {
             flex: 1;
+            min-width: 24px;
             height: 100%;
             -webkit-app-region: drag;
+        }
+
+        @media (max-width: 900px) {
+            .secondary-header-control {
+                display: none;
+            }
         }
 
         .header-control {
@@ -153,6 +160,11 @@ export class ShadowAIApp extends LitElement {
 
         .provider-model-select {
             width: 190px;
+        }
+
+        .provider-select option {
+            background: #191919;
+            color: #f5f5f5;
         }
 
         .provider-select option:disabled {
@@ -927,7 +939,8 @@ export class ShadowAIApp extends LitElement {
         } else {
             const apiKey = await shadowAI.storage.getApiKey();
             const providerStatus = await shadowAI.getProviderStatus().catch(() => ({}));
-            if ((!apiKey || apiKey === '') && !providerStatus.gemini) {
+            const hasAnswerProvider = providerStatus.providerIds?.some(provider => providerStatus[provider]);
+            if ((!apiKey || apiKey === '') && !hasAnswerProvider) {
                 const mainView = this.shadowRoot.querySelector('main-view');
                 if (mainView && mainView.triggerApiKeyError) {
                     mainView.triggerApiKeyError();
@@ -1018,7 +1031,7 @@ export class ShadowAIApp extends LitElement {
         const editedQuestion = String(question || '').trim();
         if (!editedQuestion) return;
         this._pendingInterviewerQuestion = editedQuestion;
-        this.interimTranscription = { text: editedQuestion, isFinal: true };
+        this.interimTranscription = null;
         await this.handleSendText(editedQuestion);
     }
 
@@ -1333,7 +1346,7 @@ export class ShadowAIApp extends LitElement {
                         </select>
                     </label>
                     <select
-                        class="provider-select provider-model-select"
+                        class="provider-select provider-model-select secondary-header-control"
                         aria-label="AI model selection"
                         title=${modelProvider ? `Model for ${modelProvider}` : 'Select an individual provider to choose a model'}
                         ?disabled=${!modelProvider || !modelStatus?.configured}
@@ -1348,7 +1361,7 @@ export class ShadowAIApp extends LitElement {
                         }
                     </select>
                     <label
-                        class="header-color-picker"
+                        class="header-color-picker secondary-header-control"
                         title="Choose the AI response text color"
                         style="--selected-ai-color: ${this.responseTextColor}"
                     >
@@ -1362,7 +1375,7 @@ export class ShadowAIApp extends LitElement {
                             @input=${event => this.handleResponseTextColorChange(event.target.value)}
                         />
                     </label>
-                    <label class="header-control" title="Uses the Background Transparency setting">
+                    <label class="header-control secondary-header-control" title="Uses the Background Transparency setting">
                         <span>Background ${Math.round(this.backgroundTransparency * 100)}%</span>
                         <input
                             class="header-opacity"
@@ -1374,7 +1387,7 @@ export class ShadowAIApp extends LitElement {
                             @input=${event => this.handleBackgroundTransparencyChange(event.target.value)}
                         />
                     </label>
-                    <label class="header-control" title="Controls only AI response text opacity">
+                    <label class="header-control secondary-header-control" title="Controls only AI response text opacity">
                         <span>AI Text ${Math.round(this.responseTextOpacity * 100)}%</span>
                         <input
                             class="header-opacity"

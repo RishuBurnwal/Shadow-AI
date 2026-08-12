@@ -17,8 +17,9 @@ const {
 } = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const { getConfiguredProviders, streamWithFallback, markProviderSuccess, markProviderFailure } = require('./providerRouter');
-const { syncProviderEnvironment } = require('./providerEnv');
+const { readProviderEnv, syncProviderEnvironment } = require('./providerEnv');
 const { createTurnDebouncer } = require('./turnDebouncer');
+const { connectDeepgram, sendDeepgramAudio, closeDeepgram } = require('./deepgram');
 
 // Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
 let _localai = null;
@@ -665,6 +666,74 @@ async function sendToAnswerProvider(transcription) {
     }
 }
 
+function handleDeepgramInterim(text) {
+    const inputText = String(text || '').trim();
+    if (!inputText) return;
+    if (!currentSession) currentSession = createSessionState();
+    const s = currentSession;
+    if (transitionTurn(s, 'INPUT').bargeIn) {
+        cancelCurrentAnswer();
+        sendToRenderer('update-status', 'Listening... (interrupted)');
+    }
+    answerDebouncer.interrupt();
+    s.transcription = inputText;
+    s.lastInputTime = Date.now();
+    if (s.turnStart === 0) s.turnStart = Date.now();
+    sendToRenderer('interim-transcription', { text: inputText, isFinal: false });
+}
+
+function handleDeepgramFinal(text) {
+    if (!currentSession) currentSession = createSessionState();
+    const s = currentSession;
+    s.transcription = String(text || '').trim();
+    if (!s.transcription) return;
+    const speechEndedAt = Date.now();
+    const finalText = s.transcription;
+    const { transcription } = transitionTurn(s, 'TURN_COMPLETE');
+    if (!transcription) return;
+
+    logLatency('deepgram', 'speech_end_to_transcription_ready', Date.now() - speechEndedAt);
+    sendToRenderer('interim-transcription', { text: finalText, isFinal: true });
+    const preferences = getPreferences();
+    if (!preferences.automaticResponse) {
+        sendToRenderer('update-status', 'Review the question, then click OK');
+        return;
+    }
+    answerDebouncer.setDelay(preferences.responseDelayMs);
+    sendToRenderer('update-status', 'Waiting for complete question...');
+    answerDebouncer.schedule(transcription, completeTranscription => {
+        if (!getPreferences().automaticResponse) return;
+        s.answerRequestedAt = Date.now();
+        transitionTurn(s, 'ANSWER_STARTED');
+        return Promise.resolve(sendToAnswerProvider(completeTranscription)).finally(() => transitionTurn(s, 'ANSWER_FINISHED'));
+    });
+}
+
+async function initializeDeepgramSession(apiKey, customPrompt, profile, language) {
+    sendToRenderer('session-initializing', true);
+    try {
+        const prefs = getPreferences();
+        const enabledSkills = Array.isArray(prefs.enabledSkills) ? prefs.enabledSkills : null;
+        currentSystemPrompt = getSystemPrompt(profile, customPrompt, false, enabledSkills);
+        initializeNewSession(profile, customPrompt);
+        await connectDeepgram(apiKey, normalizeLanguageCode(language), {
+            onInterim: handleDeepgramInterim,
+            onFinal: handleDeepgramFinal,
+            onOpen: () => sendToRenderer('update-status', 'Deepgram Nova-3 connected - Listening...'),
+            onError: error => sendToRenderer('update-status', 'Deepgram error: ' + error.message),
+            onClose: () => {
+                if (currentProviderMode === 'byok-deepgram') sendToRenderer('update-status', 'Deepgram session closed');
+            },
+        });
+        sendToRenderer('session-initializing', false);
+        return true;
+    } catch (error) {
+        console.error('Failed to initialize Deepgram:', error.message);
+        sendToRenderer('session-initializing', false);
+        return false;
+    }
+}
+
 async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US', isReconnect = false) {
     apiKey = apiKey || process.env.GEMINI_API_KEY || '';
     language = normalizeLanguageCode(language);
@@ -1007,6 +1076,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
                 sendCloudAudio(monoChunk);
             } else if (currentProviderMode === 'local') {
                 getLocalAi().processLocalAudio(monoChunk);
+            } else if (currentProviderMode === 'byok-deepgram') {
+                sendDeepgramAudio(monoChunk);
             } else {
                 const base64Data = monoChunk.toString('base64');
                 sendAudioToGemini(base64Data, geminiSessionRef);
@@ -1157,6 +1228,14 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     });
 
     ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
+        const deepgramApiKey = readProviderEnv()?.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY;
+        if (deepgramApiKey) {
+            currentProviderMode = 'byok-deepgram';
+            if (await initializeDeepgramSession(deepgramApiKey, customPrompt, profile, language)) {
+                geminiSessionRef.current = null;
+                return true;
+            }
+        }
         currentProviderMode = 'byok';
         const session = await initializeGeminiSession(apiKey, customPrompt, profile, language);
         if (session) {
@@ -1184,6 +1263,8 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 sendCloudAudio(pcmBuffer);
             } else if (currentProviderMode === 'local') {
                 getLocalAi().processLocalAudio(pcmBuffer, mimeType);
+            } else if (currentProviderMode === 'byok-deepgram') {
+                sendDeepgramAudio(pcmBuffer);
             } else if (geminiSessionRef.current) {
                 if (isDebug) process.stdout.write('.');
                 geminiSessionRef.current.sendRealtimeInput({
@@ -1204,6 +1285,8 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 sendCloudAudio(pcmBuffer);
             } else if (currentProviderMode === 'local') {
                 getLocalAi().processLocalAudio(pcmBuffer, mimeType);
+            } else if (currentProviderMode === 'byok-deepgram') {
+                sendDeepgramAudio(pcmBuffer);
             } else if (geminiSessionRef.current) {
                 if (isDebug) process.stdout.write(',');
                 geminiSessionRef.current.sendRealtimeInput({
@@ -1277,6 +1360,11 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 console.error('Error sending local text:', error);
                 return { success: false, error: error.message };
             }
+        }
+
+        if (currentProviderMode === 'byok-deepgram') {
+            sendToAnswerProvider(text.trim());
+            return { success: true };
         }
 
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
@@ -1377,6 +1465,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
             if (currentProviderMode === 'local') {
                 getLocalAi().closeLocalSession();
+                currentProviderMode = 'byok';
+                return { success: true };
+            }
+
+            if (currentProviderMode === 'byok-deepgram') {
+                closeDeepgram();
                 currentProviderMode = 'byok';
                 return { success: true };
             }

@@ -85,10 +85,12 @@ test('header AI color picker controls only rendered response text and persists',
     const storageSource = fs.readFileSync(path.join(root, 'src/storage.js'), 'utf8');
 
     assert.match(appSource, /type="color"/);
-    assert.match(appSource, /class="header-color-picker"/);
+    assert.match(appSource, /class="header-color-picker secondary-header-control"/);
     assert.match(appSource, /class="header-color-swatch"/);
     assert.match(appSource, /aria-label="Choose AI response text color"/);
-    assert.ok(appSource.indexOf('class="header-color-picker"') < appSource.indexOf('Controls only AI response text opacity'));
+    assert.ok(
+        appSource.indexOf('class="header-color-picker secondary-header-control"') < appSource.indexOf('Controls only AI response text opacity')
+    );
     assert.match(appSource, /handleResponseTextColorChange/);
     assert.match(appSource, /\.responseTextColor=\$\{this\.responseTextColor\}/);
     assert.match(assistantSource, /--ai-response-text-color/);
@@ -145,6 +147,20 @@ test('Gemini Live remains transcription-only and streams each incoming audio chu
     assert.doesNotMatch(source, /pendingAudioChunks|audioBatch/);
 });
 
+test('BYOK voice uses Deepgram from env and keeps Gemini as fallback', () => {
+    const source = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
+    const template = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
+    assert.match(source, /DEEPGRAM_API_KEY/);
+    assert.match(source, /connectDeepgram/);
+    assert.match(source, /sendDeepgramAudio/);
+    assert.match(template, /^DEEPGRAM_API_KEY=$/m);
+});
+
+test('native AI dropdown options remain readable in the dark header', () => {
+    const source = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+    assert.match(source, /\.provider-select option\s*\{[^}]*background:\s*#191919;[^}]*color:\s*#f5f5f5;/s);
+});
+
 test('empty transcription metadata cannot cancel a pending interview answer', () => {
     const source = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
     assert.match(source, /if \(hasInputSpeech\) answerDebouncer\.interrupt\(\)/);
@@ -170,6 +186,9 @@ test('manual response mode holds an editable recognized question until approval'
     assert.match(appSource, /Toggle automatic or manual interview response mode/);
     assert.match(appSource, /if \(!enabled && this\._isClickThrough\) await this\.togglePassthrough\(\)/);
     assert.match(assistantSource, /aria-label="Review interviewer question"/);
+    assert.match(assistantSource, /class="approve-btn"/);
+    assert.match(assistantSource, /@keydown=\$\{event => this\.handleReviewKeydown\(event\)\}/);
+    assert.match(appSource, /\.onApproveQuestion=\$\{question => this\.handleApprovedQuestion\(question\)\}/);
     assert.match(geminiSource, /if \(!preferences\.automaticResponse\)/);
     assert.match(localSource, /if \(!preferences\.automaticResponse\)/);
 });
@@ -189,12 +208,20 @@ test('Whisper downloads are pinned to immutable model revisions', () => {
     assert.match(source, /has no pinned revision/);
 });
 
-test('speech-end transcription never waits for a rolling Whisper pass', () => {
+test('speech-end and rolling transcription share one serialized Whisper path', () => {
     const source = fs.readFileSync(path.join(root, 'src/utils/localai.js'), 'utf8');
     const handler = source.slice(source.indexOf('async function handleSpeechEnd'), source.indexOf('// â”€â”€ Ollama Chat'));
 
-    assert.doesNotMatch(handler, /Waiting for in-flight|setInterval/);
     assert.match(handler, /const transcription = await transcribeAudio\(audioData\)/);
+    assert.match(source, /const transcribeAudio = serializeTranscriptions\(transcribeAudioImpl\)/);
+});
+
+test('header keeps primary controls and a drag target visible at narrow widths', () => {
+    const appSource = fs.readFileSync(path.join(root, 'src/components/app/ShadowAIApp.js'), 'utf8');
+
+    assert.match(appSource, /\.drag-region\s*\{[\s\S]*?min-width:\s*24px/);
+    assert.match(appSource, /@media \(max-width:\s*900px\)/);
+    assert.match(appSource, /\.secondary-header-control\s*\{[\s\S]*?display:\s*none/);
 });
 
 test('history exposes confirmed bulk deletion and feedback feature is absent', () => {
@@ -275,11 +302,13 @@ test('maintained project files contain no legacy product references', () => {
 
 test('speech language preferences reject auto and invalid values', () => {
     const { normalizeLanguageCode } = require('../src/storage');
+    const localSource = fs.readFileSync(path.join(root, 'src/utils/localai.js'), 'utf8');
 
     assert.equal(normalizeLanguageCode('auto'), 'en-US');
     assert.equal(normalizeLanguageCode('   '), 'en-US');
     assert.equal(normalizeLanguageCode('hi-IN'), 'hi-IN');
     assert.equal(normalizeLanguageCode('zzzzz'), 'en-US');
+    assert.match(localSource, /require\('\.\.\/storage'\)/);
 });
 
 test('local VAD silence timeout is persisted and exposed in Settings', () => {
@@ -300,7 +329,7 @@ test('answer generation waits for a configurable complete-question delay', () =>
     const localSource = fs.readFileSync(path.join(root, 'src/utils/localai.js'), 'utf8');
     const cloudSource = fs.readFileSync(path.join(root, 'src/utils/gemini.js'), 'utf8');
 
-    assert.match(storageSource, /responseDelayMs:\s*1500/);
+    assert.match(storageSource, /responseDelayMs:\s*250/);
     assert.match(settingsSource, /Automatic answer delay \(seconds\)/);
     assert.match(settingsSource, /Speech-end detection silence/);
     assert.match(settingsSource, /updatePreference\('responseDelayMs'/);

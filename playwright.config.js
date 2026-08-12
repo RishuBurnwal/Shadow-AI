@@ -1,5 +1,7 @@
 // @ts-check
 const { defineConfig } = require('@playwright/test');
+const electronEnv = { ...process.env };
+delete electronEnv.ELECTRON_RUN_AS_NODE;
 
 /**
  * Playwright configuration for Shadow AI Electron app E2E tests.
@@ -33,7 +35,7 @@ module.exports = defineConfig({
                 launchOptions: {
                     args: ['.'],
                     env: {
-                        ...process.env,
+                        ...electronEnv,
                         NODE_ENV: 'test',
                         SHADOW_AI_SILENT: 'true',
                     },

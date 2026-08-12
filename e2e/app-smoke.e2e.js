@@ -20,11 +20,14 @@ test.describe('Shadow AI', () => {
     test.beforeAll(async () => {
         if (fs.existsSync(CONFIG_DIR)) fs.rmSync(CONFIG_DIR, { recursive: true, force: true });
 
+        const env = { ...process.env };
+        delete env.ELECTRON_RUN_AS_NODE;
+
         app = await electron.launch({
             args: ['.'],
             ...(process.env.ELECTRON_EXECUTABLE_PATH ? { executablePath: process.env.ELECTRON_EXECUTABLE_PATH } : {}),
             env: {
-                ...process.env,
+                ...env,
                 NODE_ENV: 'test',
                 SHADOW_AI_SILENT: 'true',
                 SHADOW_AI_CONFIG_DIR: CONFIG_DIR,
@@ -133,7 +136,7 @@ test.describe('Shadow AI', () => {
         await goHome();
     });
 
-    test('complete-question delay defaults to 1.5 seconds and persists in milliseconds', async () => {
+    test('complete-question delay defaults to 250 ms and persists in milliseconds', async () => {
         await win.evaluate(() => document.querySelector('shadow-ai-app')?.navigate?.('customize'));
         await win.waitForTimeout(500);
         const initial = await win.evaluate(() => {
@@ -142,7 +145,7 @@ test.describe('Shadow AI', () => {
         });
         expect(initial.text).toContain('Automatic answer delay');
         expect(initial.text).toContain('Speech-end detection silence');
-        expect(initial.value).toBe(1500);
+        expect(initial.value).toBe(250);
         await win.evaluate(async () => window.shadowAI.storage.updatePreference('responseDelayMs', 2300));
         expect((await win.evaluate(async () => window.shadowAI.storage.getPreferences())).responseDelayMs).toBe(2300);
         await goHome();

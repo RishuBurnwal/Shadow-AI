@@ -68,6 +68,11 @@ function syncProviderEnvironment() {
         credentials[credential] = value;
         if (value) process.env[envKey] = value;
         else delete process.env[envKey];
+        for (const key of Object.keys(process.env))
+            if (key.startsWith(`${envKey}_`) && /^\d+$/.test(key.slice(envKey.length + 1))) delete process.env[key];
+        for (const [key, numberedValue] of Object.entries(env)) {
+            if (key.startsWith(`${envKey}_`) && /^\d+$/.test(key.slice(envKey.length + 1)) && numberedValue) process.env[key] = numberedValue;
+        }
     }
     const changed = Object.values(PROVIDER_KEYS).some(({ credential }) => previousCredentials[credential] !== credentials[credential]);
     if (changed) storage.setCredentials(credentials);
@@ -94,4 +99,13 @@ function getProviderStatus() {
 }
 /* node:coverage enable */
 
-module.exports = { PROVIDER_KEYS, getEnvPath, parseEnv, replaceEnvValue, syncProviderEnvironment, setProviderKey, getProviderStatus };
+module.exports = {
+    PROVIDER_KEYS,
+    getEnvPath,
+    parseEnv,
+    replaceEnvValue,
+    readProviderEnv,
+    syncProviderEnvironment,
+    setProviderKey,
+    getProviderStatus,
+};

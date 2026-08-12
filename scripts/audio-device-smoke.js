@@ -18,7 +18,9 @@ async function measureStream(stream, durationMs = 1500) {
 }
 
 (async () => {
-    const app = await electron.launch({ args: ['.'], env: { ...process.env, NODE_ENV: 'test', SHADOW_AI_SILENT: 'true' } });
+    const env = { ...process.env, NODE_ENV: 'test', SHADOW_AI_SILENT: 'true' };
+    delete env.ELECTRON_RUN_AS_NODE;
+    const app = await electron.launch({ args: ['.'], env });
     try {
         await app.evaluate(({ session }) => session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(true)));
         const win = await app.firstWindow();
