@@ -24,9 +24,11 @@ function buildListenUrl(language = 'en-US', sampleRate = 24000) {
 
 function createTranscriptAssembler({ onInterim = () => {}, onFinal = () => {} } = {}) {
     let finalized = [];
+    let interim = '';
     const finish = () => {
-        const text = finalized.join(' ').replace(/\s+/g, ' ').trim();
+        const text = [...finalized, interim].join(' ').replace(/\s+/g, ' ').trim();
         finalized = [];
+        interim = '';
         if (text) onFinal(text);
     };
 
@@ -34,8 +36,11 @@ function createTranscriptAssembler({ onInterim = () => {}, onFinal = () => {} } 
         if (message?.type === 'UtteranceEnd') return finish();
         if (message?.type !== 'Results') return;
         const text = String(message.channel?.alternatives?.[0]?.transcript || '').trim();
-        if (text && message.is_final) finalized.push(text);
-        const visible = [...finalized, message.is_final ? '' : text].join(' ').replace(/\s+/g, ' ').trim();
+        if (text && message.is_final) {
+            finalized.push(text);
+            interim = '';
+        } else if (text) interim = text;
+        const visible = [...finalized, interim].join(' ').replace(/\s+/g, ' ').trim();
         if (visible) onInterim(visible);
         if (message.speech_final) finish();
     };
