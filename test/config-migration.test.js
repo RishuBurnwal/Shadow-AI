@@ -51,9 +51,10 @@ test('config migration — fresh install writes defaults', () => {
     storage.initializeStorage();
 
     const config = storage.getConfig();
-    assert.equal(config.configVersion, 2);
+    assert.equal(config.configVersion, 3);
     assert.equal(config.onboarded, false);
     assert.equal(config.layout, 'normal');
+    assert.equal(storage.getPreferences().responseDelayMs, 250);
 });
 
 test('config migration — old v0 data is preserved and upgraded to v2', () => {
@@ -63,7 +64,7 @@ test('config migration — old v0 data is preserved and upgraded to v2', () => {
     storage.initializeStorage();
 
     const config = storage.getConfig();
-    assert.equal(config.configVersion, 2);
+    assert.equal(config.configVersion, 3);
     assert.equal(config.onboarded, true); // preserved from v0
     assert.equal(config.layout, 'compact'); // preserved from v0
     assert.equal(config.customField, 'should-survive'); // extra field preserved
@@ -76,7 +77,7 @@ test('config migration — v1 data is preserved and upgraded to v2', () => {
     storage.initializeStorage();
 
     const config = storage.getConfig();
-    assert.equal(config.configVersion, 2);
+    assert.equal(config.configVersion, 3);
     assert.equal(config.onboarded, true); // preserved
     assert.equal(config.layout, 'wide'); // preserved
     assert.equal(config.extraField, 'keep-me'); // extra field preserved
@@ -95,7 +96,7 @@ test('config migration — corrupt config falls back to defaults without crashin
     storage.initializeStorage();
 
     const config = storage.getConfig();
-    assert.equal(config.configVersion, 2);
+    assert.equal(config.configVersion, 3);
     assert.equal(config.onboarded, false);
     assert.equal(config.layout, 'normal');
 });
@@ -119,7 +120,7 @@ test('config migration — current v2 config remains unchanged', () => {
     storage.initializeStorage();
 
     const config = storage.getConfig();
-    assert.equal(config.configVersion, 2);
+    assert.equal(config.configVersion, 3);
     assert.equal(config.userField, 'my-value'); // fully preserved
 });
 
@@ -159,7 +160,7 @@ test('config migration — clearAllData wipes everything and reinitializes', () 
     storage.clearAllData();
 
     const config = storage.getConfig();
-    assert.equal(config.configVersion, 2);
+    assert.equal(config.configVersion, 3);
     assert.equal(config.onboarded, false); // reset to default
 
     const creds = storage.getCredentials();
@@ -175,7 +176,7 @@ test('config migration — credentials survive across migration', () => {
 
     // Config should be migrated
     const config = storage.getConfig();
-    assert.equal(config.configVersion, 2);
+    assert.equal(config.configVersion, 3);
 
     // Credentials should still be readable
     const creds = storage.getCredentials();

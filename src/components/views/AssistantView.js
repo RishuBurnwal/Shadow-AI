@@ -739,6 +739,13 @@ export class AssistantView extends LitElement {
         }, 0);
     }
 
+    handleReviewKeydown(event) {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            event.preventDefault();
+            this.onApproveQuestion(this.reviewQuestion);
+        }
+    }
+
     firstUpdated() {
         super.firstUpdated();
         this.updateResponseContent();
@@ -840,6 +847,7 @@ export class AssistantView extends LitElement {
                                                 class="caption-editor"
                                                 .value=${this.reviewQuestion}
                                                 @input=${event => (this.reviewQuestion = event.target.value)}
+                                                @keydown=${event => this.handleReviewKeydown(event)}
                                                 aria-label="Review interviewer question"
                                             />
                                             <button class="approve-btn" @click=${() => this.onApproveQuestion(this.reviewQuestion)}>OK</button>

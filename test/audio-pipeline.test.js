@@ -6,7 +6,14 @@ const path = require('node:path');
 // Import the REAL resample24kTo16k function from the source module.
 // This verifies that the actual production code works correctly, not an
 // inline reimplementation that could drift from the real logic.
-const { resample24kTo16k, getRollingAudio, MAX_ROLLING_AUDIO_MS, setVadSilenceMs, verifyWhisperCache } = require('../src/utils/localai.js');
+const {
+    resample24kTo16k,
+    getRollingAudio,
+    MAX_ROLLING_AUDIO_MS,
+    setVadSilenceMs,
+    verifyWhisperCache,
+    serializeTranscriptions,
+} = require('../src/utils/localai.js');
 const { createSessionState, transitionTurn, TURN_STATE } = require('../src/utils/gemini.js');
 
 test('Gemini turn reducer handles normal, fallback, and barge-in sequences', () => {
@@ -49,6 +56,28 @@ test('corrupt cached Whisper weights are rejected before model load', () => {
     verifyWhisperCache(cache, 'Xenova/whisper-tiny', 'revision');
     assert.equal(fs.existsSync(file), false);
     fs.rmSync(cache, { recursive: true, force: true });
+});
+
+test('rolling and final Whisper calls never run concurrently', async () => {
+    let active = 0;
+    let maxActive = 0;
+    let releaseFirst;
+    const firstBlocked = new Promise(resolve => (releaseFirst = resolve));
+    const transcribe = serializeTranscriptions(async audio => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        if (audio === 'rolling') await firstBlocked;
+        active -= 1;
+        return audio;
+    });
+
+    const rolling = transcribe('rolling');
+    const final = transcribe('final');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(maxActive, 1);
+    releaseFirst();
+    assert.deepEqual(await Promise.all([rolling, final]), ['rolling', 'final']);
+    assert.equal(maxActive, 1);
 });
 
 // ── Resample test ──

@@ -1,9 +1,9 @@
 function normalizeResponseDelayMs(value) {
-    const milliseconds = value === undefined || value === null || value === '' ? 1500 : Number(value);
-    return Math.min(10000, Math.max(0, Math.round(Number.isFinite(milliseconds) ? milliseconds : 1500)));
+    const milliseconds = value === undefined || value === null || value === '' ? 250 : Number(value);
+    return Math.min(10000, Math.max(0, Math.round(Number.isFinite(milliseconds) ? milliseconds : 250)));
 }
 
-function createTurnDebouncer(delayMs = 1500) {
+function createTurnDebouncer(delayMs = 250) {
     let delay = normalizeResponseDelayMs(delayMs);
     let timer = null;
     let parts = [];

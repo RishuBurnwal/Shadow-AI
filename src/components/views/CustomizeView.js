@@ -214,7 +214,7 @@ export class CustomizeView extends LitElement {
         this.googleSearchEnabled = true;
         this.privacyMode = false;
         this.vadSilenceMs = 500;
-        this.responseDelayMs = 1500;
+        this.responseDelayMs = 250;
         this.isClearing = false;
         this.isRestoring = false;
         this.clearStatusMessage = '';
@@ -236,7 +236,7 @@ export class CustomizeView extends LitElement {
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
             this.privacyMode = prefs.privacyMode ?? false;
             this.vadSilenceMs = prefs.vadSilenceMs ?? 500;
-            this.responseDelayMs = prefs.responseDelayMs ?? 1500;
+            this.responseDelayMs = prefs.responseDelayMs ?? 250;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
@@ -522,7 +522,7 @@ export class CustomizeView extends LitElement {
                 googleSearchEnabled: false,
                 privacyMode: false,
                 vadSilenceMs: 500,
-                responseDelayMs: 1500,
+                responseDelayMs: 250,
                 theme: 'dark',
             };
             for (const [key, value] of Object.entries(defaults)) {

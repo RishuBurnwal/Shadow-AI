@@ -237,7 +237,7 @@ def repository_matches_expected_remote(remote_url: str) -> bool:
     return normalized == expected or normalized.endswith("github.com:rishuburnwal/shadow-ai")
 
 
-def update_project(*, restart: bool = True, quiet_current: bool = False) -> int:
+def update_project(*, restart: bool = True, quiet_current: bool = False, skip_if_dirty: bool = False) -> int:
     banner("SHADOW AI UPDATER", "verified fast-forward updates")
     try:
         if not (ROOT / ".git").exists():
@@ -247,6 +247,9 @@ def update_project(*, restart: bool = True, quiet_current: bool = False) -> int:
             raise RuntimeError("Origin does not point to the official Shadow AI update repository.")
         dirty = git_output(["status", "--porcelain", "--untracked-files=no"])
         if dirty:
+            if skip_if_dirty:
+                print("Local changes detected; skipping auto-update and launching the working copy.")
+                return 0
             raise RuntimeError("Local tracked files have uncommitted changes. Commit or restore them before updating.")
 
         local_hash = git_output(["rev-parse", "HEAD"])
@@ -428,7 +431,7 @@ def launch(args: argparse.Namespace) -> int:
         return 0
 
     if not args.skip_update:
-        update_status = update_project(restart=False, quiet_current=True)
+        update_status = update_project(restart=False, quiet_current=True, skip_if_dirty=True)
         if update_status:
             return update_status
 
@@ -441,8 +444,10 @@ def launch(args: argparse.Namespace) -> int:
     command = [npm, "start"]
     if os.name == "nt":
         command = ["cmd.exe", "/d", "/c", "call", npm, "start"]
+    launch_env = os.environ.copy()
+    launch_env.pop("ELECTRON_RUN_AS_NODE", None)
     if args.wait:
-        return subprocess.run(command, cwd=ROOT, check=False, env=os.environ.copy()).returncode
+        return subprocess.run(command, cwd=ROOT, check=False, env=launch_env).returncode
 
     silent = silent_mode_enabled()
     creationflags = 0
@@ -467,7 +472,7 @@ def launch(args: argparse.Namespace) -> int:
     subprocess.Popen(
         command,
         cwd=ROOT,
-        env={**os.environ.copy(), "SHADOW_AI_READY_MARKER": str(ROOT / READY_MARKER)},
+        env={**launch_env, "SHADOW_AI_READY_MARKER": str(ROOT / READY_MARKER)},
         creationflags=creationflags,
         stdout=subprocess.DEVNULL if silent else None,
         stderr=stderr_target,

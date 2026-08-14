@@ -22,6 +22,72 @@ test('auto provider priority matches the launcher contract', () => {
     );
 });
 
+test('provider keys include numbered gaps in numeric order', () => {
+    const { getConfiguredProviders } = require('../src/utils/providerRouter');
+    const [groq] = getConfiguredProviders({
+        GROQ_API_KEY: 'primary',
+        GROQ_API_KEY_1: 'first',
+        GROQ_API_KEY_3: 'third',
+    });
+
+    assert.deepEqual(groq.apiKeys, ['primary', 'first', 'third']);
+    assert.equal(groq.apiKey, 'primary');
+});
+
+test('per-key failures rotate within a provider before provider fallback', async () => {
+    const { getConfiguredProviders, streamWithFallback } = require('../src/utils/providerRouter');
+    const providers = getConfiguredProviders({ GROQ_API_KEY_1: 'limited', GROQ_API_KEY_3: 'working' });
+    const authorizations = [];
+    const result = await streamWithFallback({
+        providers,
+        messages: [{ role: 'user', content: 'hello' }],
+        fetchImpl: async (_url, options) => {
+            authorizations.push(options.headers.Authorization);
+            if (options.headers.Authorization === 'Bearer limited') return new Response('rate limited', { status: 429 });
+            return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
+        },
+    });
+
+    assert.equal(result.provider, 'groq');
+    assert.deepEqual(authorizations, ['Bearer limited', 'Bearer working']);
+});
+
+test('network failures skip remaining keys and fall through to the next provider', async () => {
+    const { streamWithFallback } = require('../src/utils/providerRouter');
+    const seen = [];
+    const result = await streamWithFallback({
+        providers: [
+            { id: 'groq', apiKeys: ['one', 'two'], baseUrl: 'https://groq.test', model: 'test' },
+            { id: 'openai', apiKey: 'three', baseUrl: 'https://openai.test', model: 'test' },
+        ],
+        messages: [{ role: 'user', content: 'hello' }],
+        fetchImpl: async (url, options) => {
+            seen.push(options.headers.Authorization);
+            if (url.includes('groq')) throw new Error('network unavailable');
+            return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
+        },
+    });
+
+    assert.equal(result.provider, 'openai');
+    assert.deepEqual(seen, ['Bearer one', 'Bearer three']);
+});
+
+test('exhausting every account reports one clear provider-key error', async () => {
+    const { streamWithFallback } = require('../src/utils/providerRouter');
+    const notifications = [];
+
+    await assert.rejects(
+        streamWithFallback({
+            providers: [{ id: 'groq', apiKeys: ['one', 'two'], baseUrl: 'https://groq.test', model: 'test' }],
+            messages: [{ role: 'user', content: 'hello' }],
+            fetchImpl: async () => new Response('quota exhausted', { status: 429 }),
+            onProviderFailure: event => notifications.push(event),
+        }),
+        error => error.message === 'All configured answer provider keys are unavailable' && error.failures.length === 2
+    );
+    assert.equal(notifications.length, 1);
+});
+
 test('provider fallback continues after a failed upstream without leaking keys', async () => {
     const { streamWithFallback } = require('../src/utils/providerRouter');
     const seen = [];
@@ -222,6 +288,8 @@ test('main launcher exposes a numbered menu and complete idempotent setup workfl
     assert.match(launcher, /subprocess\.run\(\[git, ["']merge["'], ["']--ff-only["']/);
     assert.match(launcher, /Post-update commit hash verification failed/);
     assert.match(launcher, /UPDATE_REPOSITORY = ["']https:\/\/github\.com\/RishuBurnwal\/Shadow-AI\.git["']/);
+    assert.match(launcher, /skip_if_dirty=True/);
+    assert.match(launcher, /launch_env\.pop\(["']ELECTRON_RUN_AS_NODE["'], None\)/);
 });
 
 test('BYOK UI exposes Add API controls for every fallback provider', () => {

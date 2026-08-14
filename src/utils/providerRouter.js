@@ -4,7 +4,9 @@ const PROVIDER_DEFINITIONS = [...PROVIDERS];
 
 const providerHealth = new Map();
 const providerModelCache = new Map();
+const activeProviderKeys = new Map();
 const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+const PER_KEY_FAILURES = new Set(['credits_exhausted', 'rate_limited', 'auth_error']);
 
 function normalizeModelIds(values) {
     return [
@@ -112,12 +114,30 @@ function getProviderRuntimeStatus(configured = {}) {
 }
 
 function getConfiguredProviders(env = process.env) {
-    const configured = PROVIDER_DEFINITIONS.filter(definition => String(env[definition.envKey] || '').trim()).map(definition => ({
-        ...definition,
-        apiKey: String(env[definition.envKey]).trim(),
-        model: env[definition.modelEnv] || definition.model,
-        transport: definition.transport || 'openai',
-    }));
+    const configured = PROVIDER_DEFINITIONS.map(definition => {
+        const apiKeys = Object.entries(env)
+            .filter(([key, value]) => {
+                const suffix = key.slice(definition.envKey.length);
+                return (
+                    String(value || '').trim() && (key === definition.envKey || (key.startsWith(`${definition.envKey}_`) && /^_\d+$/.test(suffix)))
+                );
+            })
+            .sort(([a], [b]) => {
+                const index = key => (key === definition.envKey ? 0 : Number(key.slice(definition.envKey.length + 1)));
+                return index(a) - index(b);
+            })
+            .map(([, value]) => String(value).trim());
+        if (!apiKeys.length) return null;
+        const activeKeyIndex = Math.min(activeProviderKeys.get(definition.id) || 0, apiKeys.length - 1);
+        return {
+            ...definition,
+            apiKeys,
+            activeKeyIndex,
+            apiKey: apiKeys[activeKeyIndex],
+            model: env[definition.modelEnv] || definition.model,
+            transport: definition.transport || 'openai',
+        };
+    }).filter(Boolean);
 
     const requested = String(env.SHADOW_AI_PROVIDER || 'auto').toLowerCase();
     if (requested === 'auto') return configured;
@@ -175,71 +195,86 @@ async function streamWithFallback({
     const compatibleProviders = providers.filter(item => (item.transport || 'openai') === 'openai');
     for (let index = 0; index < compatibleProviders.length; index++) {
         const provider = compatibleProviders[index];
-        let response;
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), PROVIDER_REQUEST_TIMEOUT_MS);
-            // Merge with external signal (barge-in) — if either aborts, the request stops
-            if (externalSignal) {
-                const onExternalAbort = () => controller.abort();
-                externalSignal.addEventListener('abort', onExternalAbort, { once: true });
-                // Clean up listener if the internal controller fires first
-                controller.signal.addEventListener(
-                    'abort',
-                    () => {
-                        externalSignal.removeEventListener('abort', onExternalAbort);
-                    },
-                    { once: true }
-                );
-            }
-
+        const apiKeys = provider.apiKeys?.length ? provider.apiKeys : [provider.apiKey].filter(Boolean);
+        const startKeyIndex = Math.min(provider.activeKeyIndex || 0, Math.max(0, apiKeys.length - 1));
+        let lastError;
+        for (let keyIndex = startKeyIndex; keyIndex < apiKeys.length; keyIndex++) {
+            let response;
             try {
-                response = await fetchImpl(`${provider.baseUrl}/chat/completions`, {
-                    signal: controller.signal,
-                    method: 'POST',
-                    headers: {
-                        Authorization: `Bearer ${provider.apiKey}`,
-                        'Content-Type': 'application/json',
-                        ...(provider.id === 'openrouter' ? { 'HTTP-Referer': 'https://shadow-ai.local', 'X-Title': 'Shadow AI' } : {}),
-                    },
-                    body: JSON.stringify({ model: provider.model, messages, stream: true, temperature: 0.7, max_tokens: 1024 }),
-                });
-                clearTimeout(timeoutId);
-            } catch (fetchError) {
-                clearTimeout(timeoutId);
-                // Wrap AbortError into a user-friendly timeout message
-                if (fetchError.name === 'AbortError') {
-                    const timeoutError = new Error('Request timed out after ' + PROVIDER_REQUEST_TIMEOUT_MS / 1000 + 's');
-                    timeoutError.status = 408;
-                    throw timeoutError;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), PROVIDER_REQUEST_TIMEOUT_MS);
+                // Merge with external signal (barge-in) — if either aborts, the request stops
+                if (externalSignal) {
+                    const onExternalAbort = () => controller.abort();
+                    externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+                    // Clean up listener if the internal controller fires first
+                    controller.signal.addEventListener(
+                        'abort',
+                        () => {
+                            externalSignal.removeEventListener('abort', onExternalAbort);
+                        },
+                        { once: true }
+                    );
                 }
-                throw fetchError;
+
+                try {
+                    response = await fetchImpl(`${provider.baseUrl}/chat/completions`, {
+                        signal: controller.signal,
+                        method: 'POST',
+                        headers: {
+                            Authorization: `Bearer ${apiKeys[keyIndex]}`,
+                            'Content-Type': 'application/json',
+                            ...(provider.id === 'openrouter' ? { 'HTTP-Referer': 'https://shadow-ai.local', 'X-Title': 'Shadow AI' } : {}),
+                        },
+                        body: JSON.stringify({ model: provider.model, messages, stream: true, temperature: 0.7, max_tokens: 1024 }),
+                    });
+                    clearTimeout(timeoutId);
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    // Wrap AbortError into a user-friendly timeout message
+                    if (fetchError.name === 'AbortError') {
+                        const timeoutError = new Error('Request timed out after ' + PROVIDER_REQUEST_TIMEOUT_MS / 1000 + 's');
+                        timeoutError.status = 408;
+                        throw timeoutError;
+                    }
+                    throw fetchError;
+                }
+                if (!response.ok) {
+                    const detail = (await response.text().catch(() => '')).slice(0, 500);
+                    const providerError = new Error(`HTTP ${response.status}`);
+                    providerError.status = response.status;
+                    providerError.providerDetail = detail;
+                    throw providerError;
+                }
+                const text = await readSseText(response, onToken);
+                if (!text.trim()) throw new Error('Empty response');
+                activeProviderKeys.set(provider.id, keyIndex);
+                markProviderSuccess(provider.id);
+                onProviderSelected({ provider: provider.id, model: provider.model });
+                return { provider: provider.id, model: provider.model, text };
+            } catch (error) {
+                lastError = error;
+                const classification = classifyProviderFailure(error, error.status || 0);
+                markProviderFailure(provider.id, error, error.status || 0);
+                failures.push({ provider: provider.id, error: error.message, state: classification.state });
+                if (PER_KEY_FAILURES.has(classification.state) && keyIndex + 1 < apiKeys.length) {
+                    activeProviderKeys.set(provider.id, keyIndex + 1);
+                    continue;
+                }
+                break;
             }
-            if (!response.ok) {
-                const detail = (await response.text().catch(() => '')).slice(0, 500);
-                const providerError = new Error(`HTTP ${response.status}`);
-                providerError.status = response.status;
-                providerError.providerDetail = detail;
-                throw providerError;
-            }
-            const text = await readSseText(response, onToken);
-            if (!text.trim()) throw new Error('Empty response');
-            markProviderSuccess(provider.id);
-            onProviderSelected({ provider: provider.id, model: provider.model });
-            return { provider: provider.id, model: provider.model, text };
-        } catch (error) {
-            markProviderFailure(provider.id, error, error.status || 0);
-            const failure = { provider: provider.id, error: error.message };
-            failures.push(failure);
+        }
+        if (lastError) {
             onProviderFailure({
                 provider: provider.id,
                 nextProvider: compatibleProviders[index + 1]?.id || null,
-                reason: error.message,
+                reason: lastError.message,
             });
         }
     }
-    const error = new Error('All configured answer providers failed');
-    error.failures = failures;
+    const allKeysUnavailable = failures.length > 0 && failures.every(failure => PER_KEY_FAILURES.has(failure.state));
+    const error = new Error(allKeysUnavailable ? 'All configured answer provider keys are unavailable' : 'All configured answer providers failed');
+    error.failures = failures.map(({ provider, error: message }) => ({ provider, error: message }));
     throw error;
 }
 

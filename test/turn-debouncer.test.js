@@ -4,8 +4,8 @@ const { createTurnDebouncer, normalizeResponseDelayMs } = require('../src/utils/
 
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-test('response delay defaults to 1500 ms and is bounded', () => {
-    assert.equal(normalizeResponseDelayMs(undefined), 1500);
+test('response delay defaults to 250 ms and is bounded', () => {
+    assert.equal(normalizeResponseDelayMs(undefined), 250);
     assert.equal(normalizeResponseDelayMs(1750), 1750);
     assert.equal(normalizeResponseDelayMs(-10), 0);
     assert.equal(normalizeResponseDelayMs(20000), 10000);

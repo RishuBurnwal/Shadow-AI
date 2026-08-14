@@ -352,7 +352,17 @@ function pcm16ToFloat32(pcm16Buffer) {
     return float32;
 }
 
-async function transcribeAudio(pcm16kBuffer) {
+function serializeTranscriptions(transcribe) {
+    // ponytail: one queue matches the one shared model; use separate pipelines only if measured throughput requires it.
+    let previous = Promise.resolve();
+    return audio => {
+        const current = previous.then(() => transcribe(audio));
+        previous = current.catch(() => {});
+        return current;
+    };
+}
+
+async function transcribeAudioImpl(pcm16kBuffer) {
     if (!whisperPipeline) {
         console.error('[LocalAI] Whisper pipeline not loaded');
         return null;
@@ -377,6 +387,8 @@ async function transcribeAudio(pcm16kBuffer) {
         return null;
     }
 }
+
+const transcribeAudio = serializeTranscriptions(transcribeAudioImpl);
 
 // ── Speech End Handler ──
 
@@ -511,7 +523,7 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
 
         // Cache language preference for Whisper (read once, avoid disk I/O on every call)
         try {
-            const { normalizeLanguageCode, getPreferences } = require('./storage');
+            const { normalizeLanguageCode, getPreferences } = require('../storage');
             const prefs = getPreferences();
             const normalized = normalizeLanguageCode(prefs.selectedLanguage || 'en-US');
             // Whisper uses 2-letter ISO 639-1 codes; extract from BCP-47 tag
@@ -720,4 +732,5 @@ module.exports = {
     MAX_ROLLING_AUDIO_MS,
     setVadSilenceMs,
     verifyWhisperCache,
+    serializeTranscriptions,
 };

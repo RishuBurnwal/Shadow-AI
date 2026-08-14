@@ -17,7 +17,7 @@ Use a single `Shadow-AI` checkout as the canonical workspace. The launcher, upda
 - Independent header controls for background opacity, AI-response text opacity, AI-response color, and passthrough.
 - Named sessions with notes and context, editable history entries, individual deletion, and clear-all history.
 - Manual prompts, screen analysis, markdown responses, shortcuts, and optional local Ollama/Whisper mode.
-- Configurable complete-question wait (default 1.5 seconds / 1500 ms) that resets on resumed speech before generating an answer.
+- Configurable complete-question wait (default 250 ms for fresh installs) that resets on resumed speech before generating an answer.
 - Automatic and Manual interview response modes with a persisted per-user choice.
 - Editable manual question review: recognized speech waits until the user verifies or edits it and clicks **OK**.
 - Each response pairs the recognized **Interviewer** question with speaking guidance for the **Candidate**.
@@ -32,10 +32,10 @@ Use a single `Shadow-AI` checkout as the canonical workspace. The launcher, upda
 
 ### Why there are two delay settings
 
-| Setting                          | Default               | Purpose                                                                                                                                                         |
-| -------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Speech-end detection silence** | 500 ms                | Silence required before speech recognition decides the interviewer has stopped speaking and finalizes the transcript. It does not delay the AI answer.          |
-| **Automatic answer delay**       | 1.5 seconds / 1500 ms | Extra wait after the final transcript is ready before answer generation starts. Resumed speech resets it. It is ignored in Manual mode, which waits for **OK**. |
+| Setting                          | Default                  | Purpose                                                                                                                                                                                              |
+| -------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Speech-end detection silence** | 500 ms                   | Silence required before speech recognition decides the interviewer has stopped speaking and finalizes the transcript. It does not delay the AI answer.                                               |
+| **Automatic answer delay**       | 250 ms on fresh installs | Extra wait after the final transcript is ready before answer generation starts. Existing saved values are preserved. Resumed speech resets it. It is ignored in Manual mode, which waits for **OK**. |
 
 The settings use different units for readability, but both are stored internally in milliseconds. They control separate stages and are not added as duplicate response delays.
 

@@ -8,10 +8,17 @@ test('development provider env resolves to the project .env', () => {
 });
 
 test('provider env parser reads quoted values and ignores comments', () => {
-    assert.deepEqual(parseEnv("# keys\nOPENAI_API_KEY='secret'\nGROQ_API_KEY=value # note\n"), {
-        OPENAI_API_KEY: 'secret',
-        GROQ_API_KEY: 'value',
-    });
+    assert.deepEqual(
+        parseEnv(
+            "# keys\nOPENAI_API_KEY='secret'\nGROQ_API_KEY=value # note\nGROQ_API_KEY_1=backup-1\n#GROQ_API_KEY_2=off\nGROQ_API_KEY_3=backup-3\n"
+        ),
+        {
+            OPENAI_API_KEY: 'secret',
+            GROQ_API_KEY: 'value',
+            GROQ_API_KEY_1: 'backup-1',
+            GROQ_API_KEY_3: 'backup-3',
+        }
+    );
 });
 
 test('provider env writer updates only the selected key and rejects line injection', () => {

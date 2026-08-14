@@ -11,7 +11,7 @@ function getSafeStorage() {
     return _safeStorage;
 }
 
-const CONFIG_VERSION = 2;
+const CONFIG_VERSION = 3;
 
 // Default values
 const DEFAULT_CONFIG = {
@@ -51,7 +51,7 @@ const DEFAULT_PREFERENCES = {
     ollamaModel: 'llama3.1',
     whisperModel: 'Xenova/whisper-small',
     vadSilenceMs: 500,
-    responseDelayMs: 1500,
+    responseDelayMs: 250,
     automaticResponse: true,
     privacyMode: false,
     promptSkills: getStarterSkills(),
@@ -164,6 +164,11 @@ const CONFIG_MIGRATIONS = {
     1: data => ({
         ...data,
         configVersion: 2,
+    }),
+    // v2 → v3: fresh installs use a shorter delay; existing preferences are preserved below.
+    2: data => ({
+        ...data,
+        configVersion: 3,
     }),
 };
 
@@ -281,6 +286,7 @@ function initializeStorage() {
     if (fs.existsSync(prefsPath)) {
         try {
             const prefsRaw = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+            if (currentVersion < 3 && prefsRaw.responseDelayMs === undefined) prefsRaw.responseDelayMs = 1500;
             const migratedPrefs = runPreferencesMigrations(prefsRaw);
             writeJsonFile(prefsPath, migratedPrefs);
         } catch {
