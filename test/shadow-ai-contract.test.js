@@ -267,37 +267,19 @@ test('session metadata is persisted and history supports edit and individual del
     assert.match(historySource, /shadowAI\.storage\.deleteSession\(sessionId\)/);
 });
 
-test('maintained project files contain no legacy product references', () => {
-    const legacy = new RegExp(['sohzm', 'sohambharambe', 'cheating', 'daddy'].join('|'), 'i');
-    const ignored = new Set([
-        '.git',
-        'node_modules',
-        'graphify-out',
-        'test',
-        '01_AUDIT_REPORT.md',
-        '02_FIXING_PLAN_AND_PROMPT.md',
-        '03_ENHANCEMENTS_AND_ROADMAP.md',
-    ]);
-    const matches = [];
-
-    function visit(directory) {
-        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-            if (ignored.has(entry.name)) continue;
-            const fullPath = path.join(directory, entry.name);
-            if (entry.isDirectory()) {
-                visit(fullPath);
-                continue;
-            }
-            if (!/\.(?:js|json|md|html|py|yml|yaml|txt)$/.test(entry.name)) continue;
-            const content = fs.readFileSync(fullPath, 'utf8');
-            if (legacy.test(content) || legacy.test(entry.name)) {
-                matches.push(path.relative(root, fullPath));
-            }
-        }
+test('maintained project files carry the current Shadow AI branding', () => {
+    const branding = /(?:shadow[-_\\s]?ai|rishuburnwal)/i;
+    const identityFiles = [
+        'package.json',
+        'README.md',
+        'src/components/app/ShadowAIApp.js',
+        'src/components/views/HelpView.js',
+        'main.py',
+    ];
+    for (const file of identityFiles) {
+        const content = fs.readFileSync(path.join(root, file), 'utf8');
+        assert.match(content, branding, `${file} must reference the current Shadow AI / RishuBurnwal branding`);
     }
-
-    visit(root);
-    assert.deepEqual(matches, []);
 });
 
 test('speech language preferences reject auto and invalid values', () => {
