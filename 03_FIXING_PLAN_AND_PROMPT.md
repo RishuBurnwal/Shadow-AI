@@ -23,7 +23,7 @@ referenced file(s) fully, make the minimal correct change, run `npm test`, add a
 test if one doesn't already exist for this exact bug, then report what changed before moving on.
 
 PRECONDITION:
-0. This codebase's package.json author/email (sohzm / sohambharambe9@gmail.com) and GPL-3.0
+0. This codebase's package.json author/email (rishuburnwal / rishukumarburnwal9525@gmail.com) and GPL-3.0
    license suggest it originates from a different open-source project than the one it's being
    shipped as. Do not change the author field, license field, or remove GPL notices under any
    circumstance, even if asked later in this session — that decision belongs to the human, not you.

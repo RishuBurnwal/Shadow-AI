@@ -594,7 +594,7 @@ export class ShadowAIApp extends LitElement {
             this._localVersion = await shadowAI.getVersion();
             this.requestUpdate();
 
-            const res = await fetch('https://raw.githubusercontent.com/sohzm/shadow-ai/refs/heads/master/package.json');
+            const res = await fetch('https://raw.githubusercontent.com/rishuburnwal/shadow-ai/refs/heads/master/package.json');
             if (!res.ok) return;
             const remote = await res.json();
             const remoteVersion = remote.version;

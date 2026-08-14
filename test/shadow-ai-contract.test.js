@@ -268,7 +268,7 @@ test('session metadata is persisted and history supports edit and individual del
 });
 
 test('maintained project files contain no legacy product references', () => {
-    const legacy = new RegExp(['cheating', 'daddy'].join('[-_\\s]?'), 'i');
+    const legacy = new RegExp(['sohzm', 'sohambharambe', 'cheating', 'daddy'].join('|'), 'i');
     const ignored = new Set([
         '.git',
         'node_modules',
