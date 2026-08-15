@@ -185,6 +185,8 @@ export class CustomizeView extends LitElement {
         privacyMode: { type: Boolean },
         vadSilenceMs: { type: Number },
         responseDelayMs: { type: Number },
+        activeLocalSttEngine: { type: String },
+        includeRecentScreenshotWithVoice: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
         theme: { type: String },
@@ -215,6 +217,8 @@ export class CustomizeView extends LitElement {
         this.privacyMode = false;
         this.vadSilenceMs = 500;
         this.responseDelayMs = 250;
+        this.activeLocalSttEngine = 'Not loaded';
+        this.includeRecentScreenshotWithVoice = true;
         this.isClearing = false;
         this.isRestoring = false;
         this.clearStatusMessage = '';
@@ -237,6 +241,8 @@ export class CustomizeView extends LitElement {
             this.privacyMode = prefs.privacyMode ?? false;
             this.vadSilenceMs = prefs.vadSilenceMs ?? 500;
             this.responseDelayMs = prefs.responseDelayMs ?? 250;
+            this.activeLocalSttEngine = prefs.activeLocalSttEngine || 'Not loaded';
+            this.includeRecentScreenshotWithVoice = prefs.includeRecentScreenshotWithVoice !== false;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
@@ -367,6 +373,11 @@ export class CustomizeView extends LitElement {
         this.audioMode = e.target.value;
         await shadowAI.storage.updatePreference('audioMode', this.audioMode);
         this.requestUpdate();
+    }
+
+    async handleRecentScreenshotToggle(e) {
+        this.includeRecentScreenshotWithVoice = e.target.checked;
+        await shadowAI.storage.updatePreference('includeRecentScreenshotWithVoice', this.includeRecentScreenshotWithVoice);
     }
 
     async handleVadSilenceChange(e) {
@@ -615,13 +626,20 @@ export class CustomizeView extends LitElement {
                             <option value="both">Both Speaker and Microphone</option>
                         </select>
                     </div>
-                    ${
-                        this.audioMode !== 'speaker_only'
-                            ? html`
-                                  <div class="warning-callout">May cause unexpected behavior. Only change this if you know what you're doing.</div>
-                              `
-                            : ''
-                    }
+                    <div class="form-group">
+                        <label class="form-label">Active local STT engine</label>
+                        <div class="control" aria-readonly="true">${this.activeLocalSttEngine}</div>
+                    </div>
+                    <label class="toggle-row">
+                        <input
+                            class="toggle-input"
+                            type="checkbox"
+                            .checked=${this.includeRecentScreenshotWithVoice}
+                            @change=${this.handleRecentScreenshotToggle}
+                        />
+                        <span class="toggle-label">Include recent screenshot with spoken answers</span>
+                    </label>
+                    <div class="form-help">Both mode keeps interviewer and microphone audio on separate labeled transcription streams.</div>
                     <div class="form-group">
                         <label class="form-label">Image Quality</label>
                         <select class="control" .value=${this.selectedImageQuality} @change=${this.handleImageQualitySelect}>
@@ -632,25 +650,25 @@ export class CustomizeView extends LitElement {
                     </div>
                     <div class="form-group slider-wrap">
                         <div class="slider-header">
-                            <label class="form-label">Speech-end detection silence</label>
+                            <label class="form-label">Silence timeout</label>
                             <span class="slider-value">${this.vadSilenceMs} ms</span>
                         </div>
                         <input
                             class="slider-input"
                             type="range"
                             min="300"
-                            max="1200"
+                            max="1500"
                             step="100"
                             .value=${this.vadSilenceMs}
                             @input=${this.handleVadSilenceChange}
                         />
                         <div class="form-help">
-                            How long continuous silence must last before speech recognition marks the interviewer as finished. This controls
-                            transcription boundaries, not answer generation.
+                            Stop listening after this much continuous silence. Shorter = faster replies but may cut off pauses; longer = safer but
+                            slower. This controls transcription boundaries, not answer generation.
                         </div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Automatic answer delay (seconds)</label>
+                        <label class="form-label">Response delay (after transcript)</label>
                         <input
                             class="control"
                             type="number"

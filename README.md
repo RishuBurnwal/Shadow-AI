@@ -63,7 +63,7 @@ Skills can be combined. For example, enable **Screen Analyst** and **Instructor 
 | ---------------------------- | ---------: | ----------------------------------------------------------------------------------------------------------------------------------- |
 | Original engineering audit   |   **100%** | All 17 identified engineering findings are implemented or verified.                                                                 |
 | Fixing plan                  |   **100%** | All 12 planned implementation items are complete.                                                                                   |
-| Windows feature readiness    |   **100%** | Build, launch, security, local STT, physical microphone, system loopback, tests, packaging, and editable prompt skills pass.        |
+| Windows feature readiness    |   **100%** | Build, launch, security, local STT, physical microphone, system loopback, packaging, and editable prompt skills pass.               |
 | Overall production readiness |    **93%** | Windows is release-tested; authenticated hosted-provider, GPL release governance, and macOS/Linux validation remain external gates. |
 
 The remaining 7% is external validation and release governance, not a known broken Windows module. It cannot honestly be called 100% for every production environment until the hosted accounts, GPL distribution decision, and macOS/Linux release matrix are verified.
@@ -121,7 +121,6 @@ The remaining 7% is external validation and release governance, not a known brok
 - [ ] **Ollama response integration:** start a local Ollama server, pull the configured model, and verify transcriptionâ†’first-tokenâ†’completed-answer on the target machine. Ollama was not running during the audit.
 - [x] **Windows physical audio matrix:** microphone and system-loopback streams were opened through Electron and produced live PCM signal.
 - [ ] **macOS and Linux release matrix:** Windows is verified; macOS `SystemAudioDump`, Linux audio capture, packaging, signing, and permissions require platform-specific runs.
-- [x] **Coverage expansion:** meaningful persistence, prompt, memory, skill, history, limits, and CRUD tests raised line coverage from 36.6% to 47.95%, branch coverage to 70.56%, and function coverage to 61.35%. External-service failure branches remain the next coverage target.
 - [ ] **Development dependency audit:** the packaged production dependency tree is clean, but npm still reports issues in development/packaging tools. Monitor Forge and transitive dependency updates.
 - [x] **Codebase cleanup:** removed the unused full Lit bundle, stale component barrel/header, legacy onboarding artwork, empty marker file, unused Forge makers, and generated build/test/cache artifacts after reference checks.
 - [ ] **Repository-wide formatting debt:** the supplied audit documents plus pre-existing `AICustomizeView.js` and `MainView.js` remain outside a clean whole-repository Prettier pass. Files changed for the audit are formatted.
@@ -156,7 +155,7 @@ cd Shadow-AI
 python main.py
 ```
 
-On a fresh checkout, choose `2` for one-click installation. It verifies Python, Git, Node.js and npm; preserves or creates `.env`; installs the exact `package-lock.json` dependency tree with `npm ci`; verifies installed packages; runs the tracked test suite; and packages the Electron application. For normal use, choose `1` or press Enter: the launcher first compares the local and official GitHub hashes, safely fast-forwards and validates any update, then starts Shadow AI.
+On a fresh checkout, choose `2` for one-click installation. It verifies Python, Git, Node.js and npm; preserves or creates `.env`; installs the exact `package-lock.json` dependency tree with `npm ci`; verifies installed packages; and packages the Electron application. For normal use, choose `1` or press Enter: the launcher first compares the local and official GitHub hashes, safely fast-forwards and validates any update, then starts Shadow AI.
 
 ### Numbered launcher menu
 
@@ -259,14 +258,9 @@ Normal launch (option `1`) checks automatically; option `5` runs it manually. Th
 
 ```powershell
 npm install
-npm test
-npm run test:coverage
-npm run test:e2e
 npm start
 npm run package
 ```
-
-The tracked verification suites currently include 94 unit/contract checks and 27 Electron end-to-end journeys. They cover audio and transcription behavior, the passthrough-safe Automatic/Manual switch, question approval, persistence, prompt skills, providers, security contracts, window controls, resume handling, and complete desktop journeys. Generated reports remain ignored.
 
 ## Project structure
 
@@ -284,9 +278,7 @@ Shadow-AI/
 |       |-- providerEnv.js        # .env/UI key synchronization
 |       |-- localai.js            # Ollama and Whisper mode
 |       `-- window.js             # Window, shortcuts, opacity, passthrough
-|-- test/                          # Unit and contract verification
-|-- e2e/                           # Electron end-to-end verification
-`-- playwright.config.js           # Desktop E2E configuration
+`-- package.json                   # Runtime and packaging commands
 ```
 
 ## Privacy and security

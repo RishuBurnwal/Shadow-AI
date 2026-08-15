@@ -1,8 +1,8 @@
 const WebSocket = require('ws');
 
-let socket = null;
-let keepAlive = null;
-let connecting = null;
+const sockets = new Map();
+const keepAlives = new Map();
+const connecting = new Map();
 
 function buildListenUrl(language = 'en-US', sampleRate = 24000) {
     const url = new URL('wss://api.deepgram.com/v1/listen');
@@ -46,16 +46,16 @@ function createTranscriptAssembler({ onInterim = () => {}, onFinal = () => {} } 
     };
 }
 
-function connectDeepgram(apiKey, language, callbacks = {}) {
-    if (connecting) return connecting;
-    closeDeepgram();
+function connectDeepgram(apiKey, language, callbacks = {}, source = 'speaker') {
+    if (connecting.has(source)) return connecting.get(source);
+    closeDeepgram(source);
     if (!apiKey || /[\r\n\0]/.test(apiKey)) return Promise.reject(new Error('Deepgram API key is not configured'));
 
-    connecting = new Promise((resolve, reject) => {
+    const connection = new Promise((resolve, reject) => {
         const accept = createTranscriptAssembler(callbacks);
         let opened = false;
         const ws = new WebSocket(buildListenUrl(language), { headers: { Authorization: `Token ${apiKey}` } });
-        socket = ws;
+        sockets.set(source, ws);
         const timeout = setTimeout(() => {
             if (!opened) {
                 ws.terminate();
@@ -66,9 +66,12 @@ function connectDeepgram(apiKey, language, callbacks = {}) {
         ws.once('open', () => {
             opened = true;
             clearTimeout(timeout);
-            keepAlive = setInterval(() => {
-                if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'KeepAlive' }));
-            }, 8000);
+            keepAlives.set(
+                source,
+                setInterval(() => {
+                    if (sockets.get(source)?.readyState === WebSocket.OPEN) sockets.get(source).send(JSON.stringify({ type: 'KeepAlive' }));
+                }, 8000)
+            );
             callbacks.onOpen?.();
             resolve(true);
         });
@@ -85,33 +88,39 @@ function connectDeepgram(apiKey, language, callbacks = {}) {
             if (!opened) reject(error);
         });
         ws.on('close', () => {
-            clearInterval(keepAlive);
-            keepAlive = null;
-            if (socket === ws) socket = null;
+            clearInterval(keepAlives.get(source));
+            keepAlives.delete(source);
+            if (sockets.get(source) === ws) sockets.delete(source);
             callbacks.onClose?.();
         });
-    }).finally(() => (connecting = null));
-    return connecting;
+    }).finally(() => connecting.delete(source));
+    connecting.set(source, connection);
+    return connection;
 }
 
-function sendDeepgramAudio(buffer) {
+function sendDeepgramAudio(buffer, source = 'speaker') {
+    const socket = sockets.get(source);
     if (socket?.readyState !== WebSocket.OPEN || !buffer?.length) return false;
     socket.send(buffer);
     return true;
 }
 
-function closeDeepgram() {
-    clearInterval(keepAlive);
-    keepAlive = null;
-    if (socket) {
-        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'CloseStream' }));
-        socket.close();
-        socket = null;
+function closeDeepgram(source) {
+    const sources = source ? [source] : [...new Set([...sockets.keys(), ...keepAlives.keys()])];
+    for (const name of sources) {
+        clearInterval(keepAlives.get(name));
+        keepAlives.delete(name);
+        const socket = sockets.get(name);
+        if (socket) {
+            if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'CloseStream' }));
+            socket.close();
+            sockets.delete(name);
+        }
     }
 }
 
-function isDeepgramActive() {
-    return socket?.readyState === WebSocket.OPEN;
+function isDeepgramActive(source = 'speaker') {
+    return sockets.get(source)?.readyState === WebSocket.OPEN;
 }
 
 module.exports = { buildListenUrl, createTranscriptAssembler, connectDeepgram, sendDeepgramAudio, closeDeepgram, isDeepgramActive };

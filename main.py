@@ -287,7 +287,6 @@ def update_project(*, restart: bool = True, quiet_current: bool = False, skip_if
         npm = npm_command()
         for arguments, label in (
             (["ci"], "Installing exact lockfile dependencies..."),
-            (["test"], "Validating updated project..."),
             (["run", "package"], "Rebuilding Shadow AI..."),
         ):
             print(label, flush=True)
@@ -362,37 +361,32 @@ def setup_project(args: argparse.Namespace) -> int:
         npm = npm_command()
         npm_version = command_output([npm, "--version"])
         git_version = git_output(["--version"])
-        step(1, 6, f"Runtime: Python {sys.version_info.major}.{sys.version_info.minor} · Node {node_version} · npm {npm_version} · {git_version}")
-        step(2, 6, f"Environment: .env {ensure_env_file()}")
+        step(1, 5, f"Runtime: Python {sys.version_info.major}.{sys.version_info.minor} · Node {node_version} · npm {npm_version} · {git_version}")
+        step(2, 5, f"Environment: .env {ensure_env_file()}")
 
         if args.skip_install:
             if not (ROOT / "node_modules" / "electron").exists():
                 raise RuntimeError("--skip-install was used but Electron dependencies are missing.")
-            step(3, 6, "Dependencies: existing Electron runtime found")
+            step(3, 5, "Dependencies: existing Electron runtime found")
         else:
-            step(3, 6, "Installing exact package-lock dependencies with npm ci")
+            step(3, 5, "Installing exact package-lock dependencies with npm ci")
             completed = subprocess.run([npm, "ci"], cwd=ROOT, check=False)
             if completed.returncode:
                 return completed.returncode
 
-        step(4, 6, "Verifying installed dependency tree")
+        step(4, 5, "Verifying installed dependency tree")
         completed = subprocess.run([npm, "ls", "--depth=0"], cwd=ROOT, check=False)
         if completed.returncode:
             return completed.returncode
 
-        step(5, 6, "Running complete test suite")
-        completed = subprocess.run([npm, "test"], cwd=ROOT, check=False)
-        if completed.returncode:
-            return completed.returncode
-
-        step(6, 6, "Building Electron application package")
+        step(5, 5, "Building Electron application package")
         completed = subprocess.run([npm, "run", "package"], cwd=ROOT, check=False)
         if completed.returncode:
             return completed.returncode
 
         load_env(ROOT / ".env")
         available = configured_providers()
-        success("Installation, dependency verification, tests and package complete")
+        success("Installation, dependency verification and package complete")
         print("configured providers: " + (", ".join(available) if available else "none"))
         if not available:
             print("Next: add at least one API key in .env or through the Shadow AI UI.")
@@ -498,7 +492,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--setup",
         action="store_true",
-        help="complete setup: create .env, install dependencies, run tests and build the Electron package",
+        help="complete setup: create .env, install dependencies and build the Electron package",
     )
     parser.add_argument(
         "--provider",

@@ -20,6 +20,8 @@ const { getConfiguredProviders, streamWithFallback, markProviderSuccess, markPro
 const { readProviderEnv, syncProviderEnvironment } = require('./providerEnv');
 const { createTurnDebouncer } = require('./turnDebouncer');
 const { connectDeepgram, sendDeepgramAudio, closeDeepgram } = require('./deepgram');
+const { routeAudioChunk, labelTranscript } = require('./audioRouting');
+const { createRecentScreenshotStore, createOpenAiUserMessage, createGeminiParts } = require('./multimodal');
 
 // Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
 let _localai = null;
@@ -30,6 +32,22 @@ function getLocalAi() {
 
 // Provider mode: 'byok', 'cloud', or 'local'
 let currentProviderMode = 'byok';
+let currentAudioMode = 'speaker_only';
+const deepgramSourceSessions = new Map();
+const recentScreenshotStore = createRecentScreenshotStore();
+
+function captureRecentScreenshot(data) {
+    recentScreenshotStore.capture(data);
+}
+
+function getRecentScreenshot() {
+    return getPreferences().includeRecentScreenshotWithVoice === false ? null : recentScreenshotStore.recent();
+}
+
+function setAudioMode(mode) {
+    currentAudioMode = ['speaker_only', 'mic_only', 'both'].includes(mode) ? mode : 'speaker_only';
+    return currentAudioMode;
+}
 
 // Session-scoped state (replaces module-level globals for B3)
 let currentSession = null;
@@ -160,6 +178,7 @@ function initializeNewSession(profile = null, customPrompt = null) {
     currentSession = createSessionState();
     conversationHistory = [];
     screenAnalysisHistory = [];
+    recentScreenshotStore.clear();
     currentProfile = profile;
     currentCustomPrompt = customPrompt;
     console.log('New conversation session started:', currentSessionId, 'profile:', profile);
@@ -460,7 +479,7 @@ async function sendToGroq(transcription) {
     }
 }
 
-async function sendToGeminiText(transcription, appendUser = true) {
+async function sendToGeminiText(transcription, appendUser = true, screenshot = getRecentScreenshot()) {
     // If answer was cancelled (barge-in), skip
     if (!_currentAnswerAbort || _currentAnswerAbort.signal.aborted) return null;
 
@@ -491,9 +510,9 @@ async function sendToGeminiText(transcription, appendUser = true) {
     try {
         const ai = new GoogleGenAI({ apiKey: apiKey });
 
-        const messages = trimmedHistory.map(msg => ({
+        const messages = trimmedHistory.map((msg, index) => ({
             role: msg.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: msg.content }],
+            parts: msg.role === 'user' && index === trimmedHistory.length - 1 ? createGeminiParts(msg.content, screenshot) : [{ text: msg.content }],
         }));
 
         const systemPrompt = currentSystemPrompt || 'You are a helpful assistant.';
@@ -559,6 +578,7 @@ async function sendToGeminiText(transcription, appendUser = true) {
 
 async function sendToAnswerProvider(transcription) {
     if (!transcription || !transcription.trim()) return;
+    const screenshot = getRecentScreenshot();
 
     const credentials = syncProviderEnvironment();
     const env = {
@@ -578,7 +598,7 @@ async function sendToAnswerProvider(transcription) {
     if (providers[0]?.id === 'gemini') {
         try {
             sendToRenderer('provider-notification', { type: 'success', message: 'Using Gemini.' });
-            return await sendToGeminiText(transcription);
+            return await sendToGeminiText(transcription, true, screenshot);
         } catch (error) {
             sendToRenderer('provider-notification', { type: 'warning', message: 'Gemini unavailable. Switching to hosted fallback.' });
             const history = currentSession ? currentSession.groqHistory : [];
@@ -588,7 +608,7 @@ async function sendToAnswerProvider(transcription) {
     }
 
     if (!genericProviders.some(provider => provider.transport === 'openai')) {
-        return sendToGeminiText(transcription);
+        return sendToGeminiText(transcription, true, screenshot);
     }
 
     const history = currentSession ? currentSession.groqHistory : [];
@@ -607,7 +627,8 @@ async function sendToAnswerProvider(transcription) {
             providers: genericProviders,
             messages: [
                 { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
-                ...(currentSession ? currentSession.groqHistory : []),
+                ...(currentSession ? currentSession.groqHistory.slice(0, -1) : []),
+                createOpenAiUserMessage(transcription.trim(), screenshot),
             ],
             onToken: (token, fullText) => {
                 const displayText = stripThinkingTags(fullText);
@@ -656,7 +677,7 @@ async function sendToAnswerProvider(transcription) {
         if (providers.some(provider => provider.id === 'gemini')) {
             sendToRenderer('provider-notification', { type: 'warning', message: 'Hosted providers unavailable. Switching to Gemini.' });
             try {
-                return await sendToGeminiText(transcription, false);
+                return await sendToGeminiText(transcription, false, screenshot);
             } catch {
                 sendToRenderer('provider-notification', { type: 'warning', message: 'Every configured answer provider is currently unavailable.' });
             }
@@ -666,11 +687,15 @@ async function sendToAnswerProvider(transcription) {
     }
 }
 
-function handleDeepgramInterim(text) {
-    const inputText = String(text || '').trim();
+function deepgramState(source) {
+    if (!deepgramSourceSessions.has(source)) deepgramSourceSessions.set(source, createSessionState());
+    return deepgramSourceSessions.get(source);
+}
+
+function handleDeepgramInterim(text, source = 'speaker') {
+    const inputText = labelTranscript(source, text);
     if (!inputText) return;
-    if (!currentSession) currentSession = createSessionState();
-    const s = currentSession;
+    const s = deepgramState(source);
     if (transitionTurn(s, 'INPUT').bargeIn) {
         cancelCurrentAnswer();
         sendToRenderer('update-status', 'Listening... (interrupted)');
@@ -682,10 +707,9 @@ function handleDeepgramInterim(text) {
     sendToRenderer('interim-transcription', { text: inputText, isFinal: false });
 }
 
-function handleDeepgramFinal(text) {
-    if (!currentSession) currentSession = createSessionState();
-    const s = currentSession;
-    s.transcription = String(text || '').trim();
+function handleDeepgramFinal(text, source = 'speaker') {
+    const s = deepgramState(source);
+    s.transcription = labelTranscript(source, text);
     if (!s.transcription) return;
     const speechEndedAt = Date.now();
     const finalText = s.transcription;
@@ -713,18 +737,29 @@ async function initializeDeepgramSession(apiKey, customPrompt, profile, language
     sendToRenderer('session-initializing', true);
     try {
         const prefs = getPreferences();
+        setAudioMode(prefs.audioMode);
+        deepgramSourceSessions.clear();
         const enabledSkills = Array.isArray(prefs.enabledSkills) ? prefs.enabledSkills : null;
         currentSystemPrompt = getSystemPrompt(profile, customPrompt, false, enabledSkills);
         initializeNewSession(profile, customPrompt);
-        await connectDeepgram(apiKey, normalizeLanguageCode(language), {
-            onInterim: handleDeepgramInterim,
-            onFinal: handleDeepgramFinal,
-            onOpen: () => sendToRenderer('update-status', 'Deepgram Nova-3 connected - Listening...'),
-            onError: error => sendToRenderer('update-status', 'Deepgram error: ' + error.message),
-            onClose: () => {
-                if (currentProviderMode === 'byok-deepgram') sendToRenderer('update-status', 'Deepgram session closed');
-            },
-        });
+        await Promise.all(
+            ['speaker', 'mic'].map(source =>
+                connectDeepgram(
+                    apiKey,
+                    normalizeLanguageCode(language),
+                    {
+                        onInterim: text => handleDeepgramInterim(text, source),
+                        onFinal: text => handleDeepgramFinal(text, source),
+                        onOpen: () => sendToRenderer('update-status', 'Deepgram Nova-3 connected - Listening...'),
+                        onError: error => sendToRenderer('update-status', `Deepgram ${source} error: ${error.message}`),
+                        onClose: () => {
+                            if (currentProviderMode === 'byok-deepgram') sendToRenderer('update-status', `Deepgram ${source} session closed`);
+                        },
+                    },
+                    source
+                )
+            )
+        );
         sendToRenderer('session-initializing', false);
         return true;
     } catch (error) {
@@ -1075,9 +1110,9 @@ async function startMacOSAudioCapture(geminiSessionRef) {
             if (currentProviderMode === 'cloud') {
                 sendCloudAudio(monoChunk);
             } else if (currentProviderMode === 'local') {
-                getLocalAi().processLocalAudio(monoChunk);
+                getLocalAi().processLocalAudio(monoChunk, 'audio/pcm;rate=24000', 'speaker', currentAudioMode);
             } else if (currentProviderMode === 'byok-deepgram') {
-                sendDeepgramAudio(monoChunk);
+                sendDeepgramAudio(monoChunk, 'speaker');
             } else {
                 const base64Data = monoChunk.toString('base64');
                 sendAudioToGemini(base64Data, geminiSessionRef);
@@ -1205,6 +1240,7 @@ async function sendImageToGeminiHttp(base64Data, prompt) {
 }
 
 function setupGeminiIpcHandlers(geminiSessionRef) {
+    setAudioMode(getPreferences().audioMode);
     // Store the geminiSessionRef globally for reconnection access
     global.geminiSessionRef = geminiSessionRef;
 
@@ -1255,47 +1291,33 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     });
 
     // Handle audio content — fire-and-forget (ipcRenderer.send) for lower latency
-    ipcMain.on('send-audio-content', (event, { data, mimeType }) => {
+    const dispatchAudio = (source, data, mimeType) => {
         try {
             const pcmBuffer = Buffer.from(data, 'base64');
-
-            if (currentProviderMode === 'cloud') {
-                sendCloudAudio(pcmBuffer);
-            } else if (currentProviderMode === 'local') {
-                getLocalAi().processLocalAudio(pcmBuffer, mimeType);
-            } else if (currentProviderMode === 'byok-deepgram') {
-                sendDeepgramAudio(pcmBuffer);
-            } else if (geminiSessionRef.current) {
-                if (isDebug) process.stdout.write('.');
-                geminiSessionRef.current.sendRealtimeInput({
-                    audio: { data: data, mimeType: mimeType },
-                });
-            }
+            routeAudioChunk(currentAudioMode, source, pcmBuffer, ({ source: routedSource, chunk }) => {
+                if (currentProviderMode === 'cloud') {
+                    sendCloudAudio(chunk);
+                } else if (currentProviderMode === 'local') {
+                    getLocalAi().processLocalAudio(chunk, mimeType, routedSource, currentAudioMode);
+                } else if (currentProviderMode === 'byok-deepgram') {
+                    sendDeepgramAudio(chunk, routedSource);
+                } else if (geminiSessionRef.current) {
+                    if (isDebug) process.stdout.write(routedSource === 'speaker' ? '.' : ',');
+                    geminiSessionRef.current.sendRealtimeInput({ audio: { data, mimeType } });
+                }
+            });
         } catch (error) {
-            console.error('Error processing system audio:', error);
+            console.error(`Error processing ${source} audio:`, error);
         }
+    };
+
+    ipcMain.on('send-audio-content', (event, { data, mimeType }) => {
+        dispatchAudio('speaker', data, mimeType);
     });
 
     // Handle microphone audio on a separate channel
     ipcMain.on('send-mic-audio-content', (event, { data, mimeType }) => {
-        try {
-            const pcmBuffer = Buffer.from(data, 'base64');
-
-            if (currentProviderMode === 'cloud') {
-                sendCloudAudio(pcmBuffer);
-            } else if (currentProviderMode === 'local') {
-                getLocalAi().processLocalAudio(pcmBuffer, mimeType);
-            } else if (currentProviderMode === 'byok-deepgram') {
-                sendDeepgramAudio(pcmBuffer);
-            } else if (geminiSessionRef.current) {
-                if (isDebug) process.stdout.write(',');
-                geminiSessionRef.current.sendRealtimeInput({
-                    audio: { data: data, mimeType: mimeType },
-                });
-            }
-        } catch (error) {
-            console.error('Error processing mic audio:', error);
-        }
+        dispatchAudio('mic', data, mimeType);
     });
 
     ipcMain.handle('send-image-content', async (event, { data, prompt }) => {
@@ -1311,6 +1333,8 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 console.error(`Image buffer too small: ${buffer.length} bytes`);
                 return { success: false, error: 'Image buffer too small' };
             }
+
+            captureRecentScreenshot(data);
 
             if (isDebug) process.stdout.write('!');
 
@@ -1402,6 +1426,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('stop-macos-audio', async event => {
         try {
             stopMacOSAudioCapture();
+            recentScreenshotStore.clear();
             return { success: true };
         } catch (error) {
             console.error('Error stopping macOS audio capture:', error);
@@ -1545,4 +1570,7 @@ module.exports = {
     createSessionState,
     transitionTurn,
     TURN_STATE,
+    setAudioMode,
+    captureRecentScreenshot,
+    getRecentScreenshot,
 };

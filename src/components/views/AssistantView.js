@@ -298,6 +298,27 @@ export class AssistantView extends LitElement {
             background: var(--bg-app);
         }
 
+        .screen-analysis-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-xs) var(--space-md) 0;
+            color: var(--text-secondary);
+            font-size: var(--font-size-xs);
+        }
+
+        .screen-mode-select {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            padding: 4px 8px;
+        }
+
+        .capture-countdown {
+            color: var(--success);
+        }
+
         .input-bar-inner {
             display: flex;
             align-items: center;
@@ -397,6 +418,10 @@ export class AssistantView extends LitElement {
         onApproveQuestion: { type: Function },
         reviewQuestion: { type: String, state: true },
         isAnalyzing: { type: Boolean, state: true },
+        screenAnalysisMode: { type: String },
+        screenshotInterval: { type: Number },
+        nextCaptureIn: { type: Number, state: true },
+        onScreenAnalysisModeChange: { type: Function },
     };
 
     constructor() {
@@ -411,7 +436,12 @@ export class AssistantView extends LitElement {
         this.onApproveQuestion = () => {};
         this.reviewQuestion = '';
         this.isAnalyzing = false;
+        this.screenAnalysisMode = 'manual';
+        this.screenshotInterval = 5;
+        this.nextCaptureIn = 5;
+        this.onScreenAnalysisModeChange = () => {};
         this._animFrame = null;
+        this._captureCountdownTimer = null;
     }
 
     getProfileNames() {
@@ -539,6 +569,7 @@ export class AssistantView extends LitElement {
 
     connectedCallback() {
         super.connectedCallback();
+        this._syncScreenCountdown();
 
         if (window.electronAPI) {
             const { ipcRenderer } = window.electronAPI;
@@ -558,6 +589,7 @@ export class AssistantView extends LitElement {
     disconnectedCallback() {
         super.disconnectedCallback();
         this._stopWaveformAnimation();
+        clearInterval(this._captureCountdownTimer);
 
         if (window.electronAPI) {
             const { ipcRenderer } = window.electronAPI;
@@ -591,6 +623,20 @@ export class AssistantView extends LitElement {
             this._responseCountWhenStarted = this.responses.length;
             window.captureManualScreenshot();
         }
+    }
+
+    updated(changed) {
+        if (changed.has('screenAnalysisMode') || changed.has('screenshotInterval')) this._syncScreenCountdown();
+    }
+
+    _syncScreenCountdown() {
+        clearInterval(this._captureCountdownTimer);
+        this._captureCountdownTimer = null;
+        this.nextCaptureIn = Math.max(1, Number(this.screenshotInterval) || 5);
+        if (this.screenAnalysisMode !== 'automatic') return;
+        this._captureCountdownTimer = setInterval(() => {
+            this.nextCaptureIn = this.nextCaptureIn <= 1 ? Math.max(1, Number(this.screenshotInterval) || 5) : this.nextCaptureIn - 1;
+        }, 1000);
     }
 
     _startWaveformAnimation() {
@@ -861,26 +907,47 @@ export class AssistantView extends LitElement {
                     : ''
             }
 
+            <div class="screen-analysis-bar">
+                <span>Screen Analysis:</span>
+                <select
+                    class="screen-mode-select"
+                    aria-label="Screen analysis mode"
+                    .value=${this.screenAnalysisMode}
+                    @change=${event => this.onScreenAnalysisModeChange(event.target.value)}
+                >
+                    <option value="manual">Manual</option>
+                    <option value="automatic">Automatic</option>
+                </select>
+                ${
+                    this.screenAnalysisMode === 'automatic'
+                        ? html`<span class="capture-countdown">Next capture in ${this.nextCaptureIn}s (${this.screenshotInterval}s interval)</span>`
+                        : ''
+                }
+            </div>
             <div class="input-bar">
                 <div class="input-bar-inner">
                     <input type="text" id="textInput" placeholder="Type a message..." @keydown=${this.handleTextKeydown} />
                 </div>
-                <button class="analyze-btn ${this.isAnalyzing ? 'analyzing' : ''}" @click=${this.handleScreenAnswer}>
-                    <canvas class="analyze-canvas"></canvas>
-                    <span class="analyze-btn-content">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
-                            <path
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M13 3v7h6l-8 11v-7H5z"
-                            />
-                        </svg>
-                        Analyze Screen
-                    </span>
-                </button>
+                ${
+                    this.screenAnalysisMode === 'manual'
+                        ? html`<button class="analyze-btn ${this.isAnalyzing ? 'analyzing' : ''}" @click=${this.handleScreenAnswer}>
+                              <canvas class="analyze-canvas"></canvas>
+                              <span class="analyze-btn-content">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24">
+                                      <path
+                                          fill="none"
+                                          stroke="currentColor"
+                                          stroke-linecap="round"
+                                          stroke-linejoin="round"
+                                          stroke-width="2"
+                                          d="M13 3v7h6l-8 11v-7H5z"
+                                      />
+                                  </svg>
+                                  Analyze Screen
+                              </span>
+                          </button>`
+                        : ''
+                }
             </div>
         `;
     }

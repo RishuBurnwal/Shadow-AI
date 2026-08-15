@@ -7,14 +7,7 @@ module.exports = {
             unpack: '**/{onnxruntime-node,onnxruntime-common,@huggingface/transformers,sharp,@img}/**',
         },
         extraResource: ['./src/assets/SystemAudioDump'],
-        ignore: [
-            /^\/\.env$/,
-            /^\/(?:\.agents|\.claude|\.codex|\.git|e2e|graphify-out|logs|out|test|test-results|__pycache__)(?:\/|$)/,
-            /^\/(?:01_AUDIT_REPORT|02_FIXING_PLAN_AND_PROMPT|03_ENHANCEMENTS_AND_ROADMAP|04_RELEASE_AUDIT_REPORT)\.md$/,
-            /^\/playwright\.config\.js$/,
-            /^\/scripts\/audio-device-smoke\.js$/,
-            /^\/(?:AGENTS|CLAUDE)\.md$/,
-        ],
+        ignore: [/^\/\.env$/, /^\/(?:\.agents|\.claude|\.codex|\.git|graphify-out|local-documents|logs|out|__pycache__)(?:\/|$)/],
         name: 'Shadow AI',
         icon: 'src/assets/logo',
         // use `security find-identity -v -p codesigning` to find your identity

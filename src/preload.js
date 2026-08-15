@@ -56,6 +56,8 @@ const invokeChannels = new Set([
     'update-google-search-setting',
     'window-minimize',
     'window-maximize',
+    'window-get-position',
+    'window-set-position',
 ]);
 const sendChannels = new Set(['send-audio-content', 'send-mic-audio-content', 'set-passthrough-header-region', 'update-keybinds', 'view-changed']);
 const receiveChannels = new Set([

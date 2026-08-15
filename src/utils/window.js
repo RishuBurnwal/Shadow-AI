@@ -13,7 +13,7 @@ function getPassthroughController(mainWindow) {
 }
 
 const DEFAULT_MAIN_WINDOW_SIZE = { width: 1100, height: 800 };
-const MIN_WINDOW_SIZE = { width: 700, height: 320 };
+const MIN_WINDOW_SIZE = { width: 720, height: 320 };
 
 function createWindow(sendToRenderer, geminiSessionRef) {
     let windowWidth = DEFAULT_MAIN_WINDOW_SIZE.width;
@@ -357,6 +357,20 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 
     ipcMain.handle('window-minimize', () => ({ success: true, restored: toggleMinimized(mainWindow) }));
     ipcMain.handle('window-maximize', () => ({ success: true, maximized: toggleMaximized(mainWindow) }));
+    ipcMain.handle('window-get-position', () => {
+        if (mainWindow.isDestroyed()) return { success: false };
+        const [x, y] = mainWindow.getPosition();
+        return { success: true, x, y };
+    });
+    ipcMain.handle('window-set-position', (event, position) => {
+        if (mainWindow.isDestroyed() || !position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+            return { success: false };
+        }
+        const x = Math.max(-32768, Math.min(32767, Math.round(position.x)));
+        const y = Math.max(-32768, Math.min(32767, Math.round(position.y)));
+        mainWindow.setPosition(x, y, false);
+        return { success: true, x, y };
+    });
 
     ipcMain.on('update-keybinds', (event, newKeybinds) => {
         if (!mainWindow.isDestroyed()) {

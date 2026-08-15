@@ -42,6 +42,7 @@ export class ShadowAIApp extends LitElement {
             right: 0;
             z-index: 9999;
             display: flex;
+            flex-wrap: nowrap;
             align-items: center;
             height: 48px;
             gap: var(--space-sm);
@@ -52,18 +53,81 @@ export class ShadowAIApp extends LitElement {
             pointer-events: auto;
             border-bottom: 1px solid var(--border);
             box-shadow: 0 1px 8px rgba(0, 0, 0, 0.28);
+            app-region: drag;
+            -webkit-app-region: drag;
+        }
+
+        .top-drag-bar button,
+        .top-drag-bar select,
+        .top-drag-bar input,
+        .top-drag-bar label,
+        .top-drag-bar details,
+        .top-drag-bar summary {
+            app-region: no-drag;
+            -webkit-app-region: no-drag;
         }
 
         .drag-region {
             flex: 1;
             min-width: 24px;
             height: 100%;
+            app-region: drag;
             -webkit-app-region: drag;
         }
 
         @media (max-width: 900px) {
             .secondary-header-control {
                 display: none;
+            }
+
+            .header-more {
+                display: block;
+            }
+        }
+
+        .header-more {
+            position: relative;
+            display: none;
+            flex-shrink: 0;
+            -webkit-app-region: no-drag;
+        }
+
+        .header-more summary {
+            list-style: none;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 5px 9px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+
+        .header-more summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .header-more-panel {
+            position: absolute;
+            top: 34px;
+            right: 0;
+            display: grid;
+            gap: 10px;
+            min-width: 250px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--header-solid-background, #101010);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+
+        .header-more-panel .provider-select,
+        .header-more-panel .header-opacity {
+            width: 100%;
+        }
+
+        @media (max-width: 900px) {
+            .header-more {
+                display: block;
             }
         }
 
@@ -142,12 +206,13 @@ export class ShadowAIApp extends LitElement {
             display: flex;
             align-items: center;
             gap: 5px;
-            flex-shrink: 0;
+            flex: 0 1 164px;
+            min-width: 112px;
             -webkit-app-region: no-drag;
         }
 
         .provider-select {
-            width: 164px;
+            width: clamp(112px, 15vw, 164px);
             height: 28px;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
@@ -156,6 +221,17 @@ export class ShadowAIApp extends LitElement {
             padding: 0 6px;
             font-size: 11px;
             cursor: pointer;
+            max-width: 100%;
+            -webkit-app-region: no-drag;
+        }
+
+        .provider-select-wrap .provider-select {
+            width: 100%;
+        }
+
+        .audio-mode-select {
+            flex: 0 1 164px;
+            min-width: 112px;
         }
 
         .provider-model-select {
@@ -222,6 +298,30 @@ export class ShadowAIApp extends LitElement {
             padding: 0 var(--space-md);
             height: 100%;
             -webkit-app-region: no-drag;
+        }
+
+        @media (max-width: 760px) {
+            .top-drag-bar {
+                gap: 5px;
+                padding-right: 7px;
+            }
+
+            .traffic-lights {
+                gap: 6px;
+                padding: 0 8px;
+            }
+
+            .passthrough-button,
+            .header-more summary {
+                padding: 5px 6px;
+                font-size: 10px;
+            }
+        }
+
+        @media (max-width: 900px) {
+            .secondary-header-control {
+                display: none;
+            }
         }
 
         .traffic-light {
@@ -532,6 +632,7 @@ export class ShadowAIApp extends LitElement {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
         selectedScreenshotInterval: { type: String },
+        screenAnalysisMode: { type: String },
         selectedImageQuality: { type: String },
         layoutMode: { type: String },
         _viewInstances: { type: Object, state: true },
@@ -546,6 +647,7 @@ export class ShadowAIApp extends LitElement {
         responseTextColor: { type: String },
         interimTranscription: { type: Object },
         automaticResponse: { type: Boolean },
+        audioMode: { type: String },
         _providerNotification: { state: true },
         _providerStatus: { state: true },
     };
@@ -560,6 +662,7 @@ export class ShadowAIApp extends LitElement {
         this.selectedProfile = 'interview';
         this.selectedLanguage = 'en-US';
         this.selectedScreenshotInterval = '5';
+        this.screenAnalysisMode = 'manual';
         this.selectedImageQuality = 'medium';
         this.layoutMode = 'normal';
         this.responses = [];
@@ -579,6 +682,7 @@ export class ShadowAIApp extends LitElement {
         this.responseTextColor = '#f5f5f5';
         this.interimTranscription = null;
         this.automaticResponse = true;
+        this.audioMode = 'speaker_only';
         this._privacyMode = false;
         this._providerNotification = null;
         this._providerNotificationTimer = null;
@@ -622,12 +726,14 @@ export class ShadowAIApp extends LitElement {
             this.selectedProfile = prefs.selectedProfile || 'interview';
             this.selectedLanguage = prefs.selectedLanguage || 'en-US';
             this.selectedScreenshotInterval = prefs.selectedScreenshotInterval || '5';
+            this.screenAnalysisMode = prefs.screenAnalysisMode === 'automatic' ? 'automatic' : 'manual';
             this.selectedImageQuality = prefs.selectedImageQuality || 'medium';
             this.layoutMode = config.layout || 'normal';
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.responseTextOpacity = prefs.responseTextOpacity ?? 1;
             this.responseTextColor = /^#[0-9a-f]{6}$/i.test(prefs.responseTextColor) ? prefs.responseTextColor : '#f5f5f5';
             this.automaticResponse = prefs.automaticResponse !== false;
+            this.audioMode = prefs.audioMode || 'speaker_only';
 
             const prefs2 = await shadowAI.storage.getPreferences();
             this._privacyMode = prefs2.privacyMode ?? false;
@@ -884,6 +990,17 @@ export class ShadowAIApp extends LitElement {
         this.requestUpdate();
     }
 
+    async handleAudioModeChange(mode) {
+        this.audioMode = ['speaker_only', 'mic_only', 'both'].includes(mode) ? mode : 'speaker_only';
+        await shadowAI.storage.updatePreference('audioMode', this.audioMode);
+        await shadowAI.refreshPreferencesCache();
+        if (this.sessionActive) {
+            shadowAI.stopCapture();
+            await shadowAI.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+        }
+        this.requestUpdate();
+    }
+
     async togglePassthrough() {
         if (!window.electronAPI) return;
         const { ipcRenderer } = window.electronAPI;
@@ -990,6 +1107,14 @@ export class ShadowAIApp extends LitElement {
     async handleScreenshotIntervalChange(interval) {
         this.selectedScreenshotInterval = interval;
         await shadowAI.storage.updatePreference('selectedScreenshotInterval', interval);
+        if (this.sessionActive) shadowAI.configureScreenAnalysis(this.screenAnalysisMode, interval, this.selectedImageQuality);
+    }
+
+    async handleScreenAnalysisModeChange(mode) {
+        this.screenAnalysisMode = mode === 'automatic' ? 'automatic' : 'manual';
+        await shadowAI.storage.updatePreference('screenAnalysisMode', this.screenAnalysisMode);
+        shadowAI.configureScreenAnalysis(this.screenAnalysisMode, this.selectedScreenshotInterval, this.selectedImageQuality);
+        this.requestUpdate();
     }
 
     async handleImageQualityChange(quality) {
@@ -1125,6 +1250,9 @@ export class ShadowAIApp extends LitElement {
                         .responseTextColor=${this.responseTextColor}
                         .interimTranscription=${this.interimTranscription}
                         .automaticResponse=${this.automaticResponse}
+                        .screenAnalysisMode=${this.screenAnalysisMode}
+                        .screenshotInterval=${Number(this.selectedScreenshotInterval) || 5}
+                        .onScreenAnalysisModeChange=${mode => this.handleScreenAnalysisModeChange(mode)}
                         .onApproveQuestion=${question => this.handleApprovedQuestion(question)}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
@@ -1346,6 +1474,17 @@ export class ShadowAIApp extends LitElement {
                         </select>
                     </label>
                     <select
+                        class="provider-select audio-mode-select"
+                        aria-label="Live audio input mode"
+                        title="Choose who Shadow AI listens to"
+                        .value=${this.audioMode}
+                        @change=${event => this.handleAudioModeChange(event.target.value)}
+                    >
+                        <option value="speaker_only">Listen: Interviewer</option>
+                        <option value="mic_only">Listen: Me</option>
+                        <option value="both">Listen: Both</option>
+                    </select>
+                    <select
                         class="provider-select provider-model-select secondary-header-control"
                         aria-label="AI model selection"
                         title=${modelProvider ? `Model for ${modelProvider}` : 'Select an individual provider to choose a model'}
@@ -1399,6 +1538,64 @@ export class ShadowAIApp extends LitElement {
                             @input=${event => this.handleResponseTextOpacityChange(event.target.value)}
                         />
                     </label>
+                    <details class="header-more">
+                        <summary aria-label="More header controls">More</summary>
+                        <div class="header-more-panel">
+                            <select
+                                class="provider-select provider-model-select"
+                                aria-label="AI model selection"
+                                ?disabled=${!modelProvider || !modelStatus?.configured}
+                                .value=${modelStatus?.selectedModel || ''}
+                                @focus=${() => this.loadProviderStatus(true)}
+                                @change=${event => this.handleProviderModelSelection(modelProvider, event.target.value)}
+                            >
+                                ${
+                                    modelProvider
+                                        ? (modelStatus?.models || []).map(model => html`<option value=${model}>${model}</option>`)
+                                        : html`<option value="">Model: automatic</option>`
+                                }
+                            </select>
+                            <label
+                                class="header-color-picker"
+                                title="Choose the AI response text color"
+                                style="--selected-ai-color: ${this.responseTextColor}"
+                            >
+                                <span>AI Color</span>
+                                <span class="header-color-swatch" aria-hidden="true"></span>
+                                <input
+                                    class="header-color"
+                                    type="color"
+                                    aria-label="Choose AI response text color"
+                                    .value=${this.responseTextColor}
+                                    @input=${event => this.handleResponseTextColorChange(event.target.value)}
+                                />
+                            </label>
+                            <label class="header-control" title="Uses the Background Transparency setting">
+                                <span>Background ${Math.round(this.backgroundTransparency * 100)}%</span>
+                                <input
+                                    class="header-opacity"
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    .value=${this.backgroundTransparency}
+                                    @input=${event => this.handleBackgroundTransparencyChange(event.target.value)}
+                                />
+                            </label>
+                            <label class="header-control" title="Controls only AI response text opacity">
+                                <span>AI Text ${Math.round(this.responseTextOpacity * 100)}%</span>
+                                <input
+                                    class="header-opacity"
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    .value=${this.responseTextOpacity}
+                                    @input=${event => this.handleResponseTextOpacityChange(event.target.value)}
+                                />
+                            </label>
+                        </div>
+                    </details>
                     ${
                         isLive
                             ? html`<button

@@ -6,11 +6,52 @@ let screenshotInterval = null;
 let audioContext = null;
 let audioProcessor = null;
 let micAudioProcessor = null;
+let micAudioContext = null;
+let micStream = null;
 let audioBuffer = [];
 const SAMPLE_RATE = 24000;
 const captureSampleRate = () => (preferencesCache?.providerMode === 'local' ? 16000 : SAMPLE_RATE);
 const AUDIO_CHUNK_DURATION = 0.1; // seconds
 const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
+
+const nativeDragStrip = document.querySelector('#native-drag-strip');
+let customDragStart = null;
+if (nativeDragStrip) {
+    nativeDragStrip.dataset.customDragReady = 'true';
+    nativeDragStrip.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        customDragStart = {
+            screenX: event.screenX,
+            screenY: event.screenY,
+            origin: ipcRenderer.invoke('window-get-position'),
+        };
+        nativeDragStrip.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    });
+    nativeDragStrip.addEventListener('pointermove', async event => {
+        const start = customDragStart;
+        if (!start || !(event.buttons & 1)) return;
+        const origin = await start.origin;
+        if (!origin?.success) return;
+        await ipcRenderer.invoke('window-set-position', {
+            x: origin.x + event.screenX - start.screenX,
+            y: origin.y + event.screenY - start.screenY,
+        });
+    });
+    const stopCustomDrag = () => {
+        customDragStart = null;
+    };
+    nativeDragStrip.addEventListener('pointerup', stopCustomDrag);
+    nativeDragStrip.addEventListener('pointercancel', stopCustomDrag);
+}
+
+function capturedCanvasIsBlank() {
+    return window.shadowFrameAnalysis.isCapturedFrameBlank(
+        offscreenCanvas.width,
+        offscreenCanvas.height,
+        (x, y) => offscreenContext.getImageData(x, y, 1, 1).data
+    );
+}
 
 // Cache the Blob URL so addModule calls reuse the same one (idempotent on same AudioContext)
 let _cachedWorkletBlobUrl = null;
@@ -289,10 +330,10 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
             console.log('Starting macOS capture with SystemAudioDump...');
 
-            // Start macOS audio capture
-            const audioResult = await ipcRenderer.invoke('start-macos-audio');
-            if (!audioResult.success) {
-                throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
+            // Start macOS system audio only when the selected mode needs it.
+            if (audioMode !== 'mic_only') {
+                const audioResult = await ipcRenderer.invoke('start-macos-audio');
+                if (!audioResult.success) throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
             }
 
             // Get screen capture for screenshots
@@ -308,7 +349,6 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             console.log('macOS screen capture started - audio handled by SystemAudioDump');
 
             if (audioMode === 'mic_only' || audioMode === 'both') {
-                let micStream = null;
                 try {
                     micStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
@@ -338,21 +378,24 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         width: { ideal: 1920 },
                         height: { ideal: 1080 },
                     },
-                    audio: {
-                        sampleRate: SAMPLE_RATE,
-                        channelCount: 1,
-                        echoCancellation: false, // Don't cancel system audio
-                        noiseSuppression: false,
-                        autoGainControl: false,
-                    },
+                    audio:
+                        audioMode === 'mic_only'
+                            ? false
+                            : {
+                                  sampleRate: SAMPLE_RATE,
+                                  channelCount: 1,
+                                  echoCancellation: false,
+                                  noiseSuppression: false,
+                                  autoGainControl: false,
+                              },
                 });
 
                 console.log('Linux system audio capture via getDisplayMedia succeeded');
 
                 // Setup audio processing for Linux system audio
-                setupLinuxSystemAudioProcessing().catch(err => {
-                    console.error('Linux system AudioWorklet setup failed:', err);
-                });
+                if (audioMode !== 'mic_only') {
+                    setupLinuxSystemAudioProcessing().catch(err => console.error('Linux system AudioWorklet setup failed:', err));
+                }
             } catch (systemAudioError) {
                 console.warn('System audio via getDisplayMedia failed, trying screen-only capture:', systemAudioError);
 
@@ -369,7 +412,6 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
             // Additionally get microphone input for Linux based on audio mode
             if (audioMode === 'mic_only' || audioMode === 'both') {
-                let micStream = null;
                 try {
                     micStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
@@ -403,24 +445,26 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                     width: { ideal: 1920 },
                     height: { ideal: 1080 },
                 },
-                audio: {
-                    sampleRate: SAMPLE_RATE,
-                    channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                },
+                audio:
+                    audioMode === 'mic_only'
+                        ? false
+                        : {
+                              sampleRate: SAMPLE_RATE,
+                              channelCount: 1,
+                              echoCancellation: false,
+                              noiseSuppression: false,
+                              autoGainControl: false,
+                          },
             });
 
             console.log('Windows capture started with loopback audio');
 
             // Setup audio processing for Windows loopback audio only
-            setupWindowsLoopbackProcessing().catch(err => {
-                console.error('Windows loopback AudioWorklet setup failed:', err);
-            });
+            if (audioMode !== 'mic_only') {
+                setupWindowsLoopbackProcessing().catch(err => console.error('Windows loopback AudioWorklet setup failed:', err));
+            }
 
             if (audioMode === 'mic_only' || audioMode === 'both') {
-                let micStream = null;
                 try {
                     micStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
@@ -447,19 +491,26 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             hasAudio: mediaStream.getAudioTracks().length > 0,
             videoTrack: mediaStream.getVideoTracks()[0]?.getSettings(),
         });
-
-        // Manual mode only - screenshots captured on demand via shortcut
-        console.log('Manual mode enabled - screenshots will be captured on demand only');
+        configureScreenAnalysis(preferencesCache.screenAnalysisMode || 'manual', screenshotIntervalSeconds, imageQuality);
     } catch (err) {
         console.error('Error starting capture:', err);
         shadowAI.setStatus('error');
     }
 }
 
+function configureScreenAnalysis(mode = 'manual', screenshotIntervalSeconds = 5, imageQuality = currentImageQuality) {
+    if (screenshotInterval) clearInterval(screenshotInterval);
+    screenshotInterval = null;
+    currentImageQuality = imageQuality || currentImageQuality;
+    const seconds = Math.max(1, Number(screenshotIntervalSeconds) || 5);
+    if (mode === 'automatic') screenshotInterval = setInterval(() => captureManualScreenshot(currentImageQuality), seconds * 1000);
+    return { mode: mode === 'automatic' ? 'automatic' : 'manual', intervalSeconds: seconds };
+}
+
 async function setupLinuxMicProcessing(micStream) {
     // Setup microphone audio processing for Linux
     const sampleRate = captureSampleRate();
-    const micAudioContext = new AudioContext({ sampleRate });
+    micAudioContext = new AudioContext({ sampleRate });
     const micSource = micAudioContext.createMediaStreamSource(micStream);
 
     // Register the AudioWorkletProcessor module
@@ -611,15 +662,9 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 
     offscreenContext.drawImage(hiddenVideo, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
 
-    // Check if image was drawn properly by sampling a pixel
-    const imageData = offscreenContext.getImageData(0, 0, 1, 1);
-    const isBlank = imageData.data.every((value, index) => {
-        // Check if all pixels are black (0,0,0) or transparent
-        return index === 3 ? true : value === 0;
-    });
-
-    if (isBlank) {
-        console.warn('Screenshot appears to be blank/black');
+    if (capturedCanvasIsBlank()) {
+        console.warn('Protected/blank screenshot skipped; keeping the last valid screen context');
+        return;
     }
 
     let qualityValue;
@@ -725,6 +770,11 @@ async function captureManualScreenshot(imageQuality = null) {
     offscreenCanvas.height = destH;
     offscreenContext.drawImage(hiddenVideo, 0, 0, destW, destH);
 
+    if (capturedCanvasIsBlank()) {
+        console.warn('Protected/blank manual screenshot skipped; keeping the last valid screen context');
+        return;
+    }
+
     let qualityValue;
     switch (quality) {
         case 'high':
@@ -797,6 +847,16 @@ function stopCapture() {
     if (micAudioProcessor) {
         micAudioProcessor.disconnect();
         micAudioProcessor = null;
+    }
+
+    if (micAudioContext) {
+        micAudioContext.close();
+        micAudioContext = null;
+    }
+
+    if (micStream) {
+        micStream.getTracks().forEach(track => track.stop());
+        micStream = null;
     }
 
     if (audioContext) {
@@ -1239,6 +1299,7 @@ const shadowAI = {
     initializeLocal,
     startCapture,
     stopCapture,
+    configureScreenAnalysis,
     sendTextMessage,
     handleShortcut,
 

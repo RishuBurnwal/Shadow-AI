@@ -5,6 +5,8 @@ const path = require('node:path');
 const { getSystemPrompt } = require('./prompts');
 const { createTurnDebouncer } = require('./turnDebouncer');
 const { initializeSileroVAD, VadProcessor, isAvailable, FRAME_SIZE } = require('./sileroVad');
+const { createSttEngineManager } = require('./sttEngineManager');
+const { createOllamaUserMessage } = require('./multimodal');
 
 // Lazy load gemini to avoid requiring 'electron' at module load time.
 // This allows unit tests that import localai.js for resample24kTo16k to
@@ -29,6 +31,7 @@ function saveConversationTurn(t, a) {
 let ollamaClient = null;
 let ollamaModel = null;
 let whisperPipeline = null;
+let sttEngineManager = null;
 let isWhisperLoading = false;
 let localConversationHistory = [];
 let currentSystemPrompt = null;
@@ -50,6 +53,8 @@ const MAX_ROLLING_AUDIO_MS = 5000;
 const MAX_ROLLING_AUDIO_BYTES = (16000 * 2 * MAX_ROLLING_AUDIO_MS) / 1000;
 let lastRollingTranscriptionTime = 0;
 let _isTranscribing = false; // In-flight guard to prevent concurrent transcribeAudio() calls
+const FINAL_TRANSCRIPTION_MAX_WAIT_MS = 800;
+const TRANSCRIPTION_POLL_MS = 25;
 const answerDebouncer = createTurnDebouncer();
 let answerRequestedAt = 0;
 
@@ -79,6 +84,8 @@ const WHISPER_ONNX_HASHES = Object.freeze({
         'onnx/encoder_model_quantized.onnx': '7d6b4a00e441271646327f8a71b6e1bd1a305013cd914b51ddd76919c59ee3af',
     },
 });
+const MOONSHINE_MODEL = 'onnx-community/moonshine-base-ONNX';
+const MOONSHINE_REVISION = '02858c8ea265e086aeb6d20413c223dfd9206bec';
 
 function sha256(data) {
     return crypto.createHash('sha256').update(data).digest('hex');
@@ -111,9 +118,13 @@ const VAD_MODES = {
 let vadConfig = VAD_MODES.VERY_AGGRESSIVE;
 
 function setVadSilenceMs(value) {
-    const milliseconds = Math.min(1200, Math.max(300, Number(value) || 500));
+    const milliseconds = Math.min(1500, Math.max(300, Number(value) || 500));
     vadConfig = { ...VAD_MODES.VERY_AGGRESSIVE, silenceFramesRequired: Math.round(milliseconds / 100) };
     return milliseconds;
+}
+
+function getVadSilenceMs() {
+    return vadConfig.silenceFramesRequired * 100;
 }
 
 function getRollingAudio(audio) {
@@ -122,6 +133,9 @@ function getRollingAudio(audio) {
 
 // Audio resampling buffer
 let resampleRemainder = Buffer.alloc(0);
+let localAudioMode = 'speaker_only';
+const localBothQueues = { speaker: [], mic: [] };
+let vadQueue = Promise.resolve();
 
 // ── Audio Resampling (24kHz → 16kHz) ──
 
@@ -164,6 +178,19 @@ function calculateRMS(pcm16Buffer) {
         sumSquares += sample * sample;
     }
     return Math.sqrt(sumSquares / samples);
+}
+
+function mixPcm16(first, second) {
+    const bytes = Math.min(first.length, second.length) - (Math.min(first.length, second.length) % 2);
+    const mixed = Buffer.alloc(bytes);
+    for (let offset = 0; offset < bytes; offset += 2) {
+        mixed.writeInt16LE(Math.round((first.readInt16LE(offset) + second.readInt16LE(offset)) / 2), offset);
+    }
+    return mixed;
+}
+
+function queueVAD(pcm16k) {
+    vadQueue = vadQueue.then(() => processVAD(pcm16k)).catch(err => console.error('[LocalAI] VAD processing error:', err.message));
 }
 
 async function processVAD(pcm16kBuffer) {
@@ -343,6 +370,99 @@ async function loadWhisperPipeline(modelName) {
     }
 }
 
+function float32ToWav(audio, sampleRate = 16000) {
+    const pcm = Buffer.alloc(audio.length * 2);
+    for (let i = 0; i < audio.length; i += 1) pcm.writeInt16LE(Math.round(Math.max(-1, Math.min(1, audio[i])) * 32767), i * 2);
+    const wav = Buffer.alloc(44 + pcm.length);
+    wav.write('RIFF', 0);
+    wav.writeUInt32LE(36 + pcm.length, 4);
+    wav.write('WAVEfmt ', 8);
+    wav.writeUInt32LE(16, 16);
+    wav.writeUInt16LE(1, 20);
+    wav.writeUInt16LE(1, 22);
+    wav.writeUInt32LE(sampleRate, 24);
+    wav.writeUInt32LE(sampleRate * 2, 28);
+    wav.writeUInt16LE(2, 32);
+    wav.writeUInt16LE(16, 34);
+    wav.write('data', 36);
+    wav.writeUInt32LE(pcm.length, 40);
+    pcm.copy(wav, 44);
+    return wav;
+}
+
+async function loadNemotronServer() {
+    if (currentWhisperLanguage !== 'en') throw new Error('Nemotron Speech Streaming currently supports English only');
+    const endpoint = new URL(process.env.NEMO_SPEECH_URL || 'http://127.0.0.1:8080');
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname)) throw new Error('NEMO_SPEECH_URL must use the local machine');
+    const headers = process.env.NEMO_SPEECH_API_KEY ? { Authorization: `Bearer ${process.env.NEMO_SPEECH_API_KEY}` } : {};
+    const ready = await fetch(new URL('/ready', endpoint), { headers });
+    if (!ready.ok) throw new Error(`NeMo-Speech.cpp is not ready (${ready.status})`);
+    return {
+        name: 'NVIDIA Nemotron Speech Streaming',
+        async transcribe(audio) {
+            const form = new FormData();
+            form.append('file', new Blob([float32ToWav(audio)], { type: 'audio/wav' }), 'speech.wav');
+            form.append('model', 'nemotron-speech-streaming-en-0.6b');
+            const response = await fetch(new URL('/v1/audio/transcriptions', endpoint), { method: 'POST', headers, body: form });
+            if (!response.ok) throw new Error(`Nemotron transcription failed (${response.status})`);
+            return String((await response.json()).text || '').trim();
+        },
+    };
+}
+
+async function loadMoonshinePipeline() {
+    if (currentWhisperLanguage !== 'en') throw new Error('Moonshine base currently supports English only');
+    const { pipeline, env } = await import('@huggingface/transformers');
+    const { app } = require('electron');
+    env.cacheDir = path.join(app.getPath('userData'), 'local-stt-models');
+    let transcriber;
+    try {
+        transcriber = await pipeline('automatic-speech-recognition', MOONSHINE_MODEL, {
+            dtype: 'q8',
+            device: 'webgpu',
+            revision: MOONSHINE_REVISION,
+        });
+    } catch (error) {
+        console.warn('[SHADOW_STT_ENGINE] Moonshine WebGPU unavailable; using CPU:', error.message);
+        transcriber = await pipeline('automatic-speech-recognition', MOONSHINE_MODEL, {
+            dtype: 'q8',
+            device: 'cpu',
+            revision: MOONSHINE_REVISION,
+        });
+    }
+    return { name: 'Moonshine v2', transcribe: audio => transcriber(audio, { sampling_rate: 16000 }) };
+}
+
+function createLocalSttManager(whisperModel) {
+    return createSttEngineManager(
+        [
+            { name: 'NVIDIA Nemotron Speech Streaming', timeoutMs: 3000, load: loadNemotronServer },
+            { name: 'Moonshine v2', timeoutMs: 300000, load: loadMoonshinePipeline },
+            {
+                name: 'Whisper',
+                timeoutMs: 300000,
+                load: async () => {
+                    const pipeline = await loadWhisperPipeline(whisperModel);
+                    if (!pipeline) throw new Error('Whisper pipeline failed to load');
+                    return {
+                        name: 'Whisper',
+                        transcribe: audio =>
+                            pipeline(audio, { sampling_rate: 16000, language: currentWhisperLanguage, task: 'transcribe' }).then(result =>
+                                result.text?.trim()
+                            ),
+                    };
+                },
+            },
+        ],
+        {
+            onActive: name => {
+                require('../storage').updatePreference('activeLocalSttEngine', name);
+                sendToRenderer('update-status', `${name} ready - Listening...`);
+            },
+        }
+    );
+}
+
 function pcm16ToFloat32(pcm16Buffer) {
     const samples = pcm16Buffer.length / 2;
     const float32 = new Float32Array(samples);
@@ -362,9 +482,17 @@ function serializeTranscriptions(transcribe) {
     };
 }
 
+async function waitForTranscriptionIdle(isBusy, maxWaitMs = FINAL_TRANSCRIPTION_MAX_WAIT_MS, pollMs = TRANSCRIPTION_POLL_MS) {
+    const deadline = Date.now() + maxWaitMs;
+    while (isBusy() && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, pollMs));
+    }
+    return !isBusy();
+}
+
 async function transcribeAudioImpl(pcm16kBuffer) {
-    if (!whisperPipeline) {
-        console.error('[LocalAI] Whisper pipeline not loaded');
+    if (!sttEngineManager) {
+        console.error('[LocalAI] STT engine not loaded');
         return null;
     }
 
@@ -373,13 +501,7 @@ async function transcribeAudioImpl(pcm16kBuffer) {
 
         // Use the cached language preference (set in initializeLocalSession)
         // This avoids reading the preferences file from disk on every call.
-        const result = await whisperPipeline(float32Audio, {
-            sampling_rate: 16000,
-            language: currentWhisperLanguage,
-            task: 'transcribe',
-        });
-
-        const text = result.text?.trim();
+        const text = String((await sttEngineManager.transcribe(float32Audio)) || '').trim();
         console.log('[LocalAI] Transcription:', text);
         return text;
     } catch (error) {
@@ -403,9 +525,19 @@ async function handleSpeechEnd(audioData) {
         return;
     }
 
-    // Final transcription is allowed to overlap a best-effort rolling pass so
-    // speech-end never waits behind an interim caption.
-    const transcription = await transcribeAudio(audioData);
+    const becameIdle = await waitForTranscriptionIdle(() => _isTranscribing);
+    if (!becameIdle) {
+        console.warn(`[SHADOW_CONCURRENCY] Rolling transcription exceeded ${FINAL_TRANSCRIPTION_MAX_WAIT_MS}ms; final transcription is continuing`);
+    }
+
+    _isTranscribing = true;
+    let transcription;
+    try {
+        // The serialized model queue remains the final safety net if the capped wait expires.
+        transcription = await transcribeAudio(audioData);
+    } finally {
+        _isTranscribing = false;
+    }
 
     // Send final transcription to renderer (replacing any interim partial text)
     if (transcription && transcription.trim().length > 0) {
@@ -451,10 +583,9 @@ async function sendToOllama(transcription) {
 
     console.log('[LocalAI] Sending to Ollama:', transcription.substring(0, 100) + '...');
 
-    localConversationHistory.push({
-        role: 'user',
-        content: transcription.trim(),
-    });
+    const text = transcription.trim();
+    const screenshot = require('../storage').getPreferences().includeRecentScreenshotWithVoice === false ? null : getGemini().getRecentScreenshot();
+    localConversationHistory.push({ role: 'user', content: text });
 
     // Keep history manageable
     if (localConversationHistory.length > 20) {
@@ -462,7 +593,11 @@ async function sendToOllama(transcription) {
     }
 
     try {
-        const messages = [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...localConversationHistory];
+        const messages = [
+            { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
+            ...localConversationHistory.slice(0, -1),
+            createOllamaUserMessage(text, screenshot),
+        ];
 
         const response = await ollamaClient.chat({
             model: ollamaModel,
@@ -549,8 +684,9 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
         }
 
         // Load Whisper model
-        const pipeline = await loadWhisperPipeline(whisperModel);
-        if (!pipeline) {
+        sttEngineManager = createLocalSttManager(whisperModel);
+        const engine = await sttEngineManager.load().catch(() => null);
+        if (!engine) {
             sendToRenderer('session-initializing', false);
             return false;
         }
@@ -606,15 +742,24 @@ async function initializeLocalSession(ollamaHost, model, whisperModel, profile, 
     }
 }
 
-function processLocalAudio(audioChunk, mimeType = 'audio/pcm;rate=24000') {
+function processLocalAudio(audioChunk, mimeType = 'audio/pcm;rate=24000', source = 'speaker', audioMode = 'speaker_only') {
     if (!isLocalActive) return;
 
+    if (audioMode !== localAudioMode) {
+        localAudioMode = audioMode;
+        localBothQueues.speaker = [];
+        localBothQueues.mic = [];
+    }
     const pcm16k = mimeType.includes('rate=16000') ? audioChunk : resample24kTo16k(audioChunk);
-    if (pcm16k.length > 0) {
-        // processVAD is now async (due to Silero VAD inference)
-        processVAD(pcm16k).catch(err => {
-            console.error('[LocalAI] VAD processing error:', err.message);
-        });
+    if (pcm16k.length === 0) return;
+    if (audioMode === 'both' && Object.hasOwn(localBothQueues, source)) {
+        localBothQueues[source].push(pcm16k);
+        if (localBothQueues[source].length > 20) localBothQueues[source].shift();
+        while (localBothQueues.speaker.length && localBothQueues.mic.length) {
+            queueVAD(mixPcm16(localBothQueues.speaker.shift(), localBothQueues.mic.shift()));
+        }
+    } else {
+        queueVAD(pcm16k);
     }
 }
 
@@ -627,6 +772,8 @@ function closeLocalSession() {
     silenceFrameCount = 0;
     speechFrameCount = 0;
     resampleRemainder = Buffer.alloc(0);
+    localBothQueues.speaker = [];
+    localBothQueues.mic = [];
     localConversationHistory = [];
     ollamaClient = null;
     ollamaModel = null;
@@ -667,11 +814,7 @@ async function sendLocalImage(base64Data, prompt) {
         console.log('[LocalAI] Sending image to Ollama');
         sendToRenderer('update-status', 'Analyzing image...');
 
-        const userMessage = {
-            role: 'user',
-            content: prompt,
-            images: [base64Data],
-        };
+        const userMessage = createOllamaUserMessage(prompt, base64Data);
 
         // Store text-only version in history
         localConversationHistory.push({ role: 'user', content: prompt });
@@ -731,6 +874,10 @@ module.exports = {
     getRollingAudio,
     MAX_ROLLING_AUDIO_MS,
     setVadSilenceMs,
+    getVadSilenceMs,
     verifyWhisperCache,
     serializeTranscriptions,
+    waitForTranscriptionIdle,
+    FINAL_TRANSCRIPTION_MAX_WAIT_MS,
+    mixPcm16,
 };

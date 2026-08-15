@@ -185,6 +185,24 @@
                 width: 100%;
                 height: 100%;
             }
+
+            #native-drag-strip {
+                position: fixed;
+                top: 0;
+                left: 92px;
+                z-index: 10001;
+                width: 24px;
+                height: 48px;
+                cursor: move;
+                app-region: no-drag;
+                -webkit-app-region: no-drag;
+            }
+
+            @media (max-width: 760px) {
+                #native-drag-strip {
+                    left: 69px;
+                }
+            }
         </style>
     </head>
     <body>
@@ -193,7 +211,9 @@
         <link rel="stylesheet" href="assets/highlight-vscode-dark.min.css" />
         <script type="module" src="components/app/ShadowAIApp.js"></script>
 
+        <div id="native-drag-strip" aria-hidden="true"></div>
         <shadow-ai-app id="shadowAI"></shadow-ai-app>
+        <script src="utils/frameAnalysis.js"></script>
         <script src="utils/renderer.js"></script>
     </body>
 </html>

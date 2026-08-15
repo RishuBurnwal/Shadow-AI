@@ -197,6 +197,7 @@ function setupStorageIpcHandlers() {
         try {
             storage.updatePreference(key, value);
             if (key === 'vadSilenceMs') require('./utils/localai').setVadSilenceMs(value);
+            if (key === 'audioMode') require('./utils/gemini').setAudioMode(value);
             return { success: true };
         } catch (error) {
             console.error('Error updating preference:', error);
