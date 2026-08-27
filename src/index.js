@@ -444,9 +444,9 @@ function setupGeneralIpcHandlers() {
     }
     applyProviderModels(providerModels);
 
-    ipcMain.handle('get-provider-status', async (event, forceModels = false) => {
+    ipcMain.handle('get-provider-status', async () => {
         const configured = providerEnv.getProviderStatus();
-        const discoveredModels = await discoverProviderModels(getConfiguredProviders(), { force: forceModels === true });
+        const discoveredModels = await discoverProviderModels(getConfiguredProviders(), { force: true });
         const currentPreferences = storage.getPreferences();
         const selectedModels = { ...(currentPreferences.providerModels || {}) };
         let selectionChanged = false;

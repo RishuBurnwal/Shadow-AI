@@ -185,7 +185,7 @@ async function readSseText(response, onToken) {
 }
 
 // Timeout for hosted provider fetch calls (avoids hanging on stalled connections)
-const PROVIDER_REQUEST_TIMEOUT_MS = 10000; // 10 seconds
+const PROVIDER_REQUEST_TIMEOUT_MS = 30000; // Some reasoning models need longer than 10 seconds before their first token.
 
 async function streamWithFallback({
     providers,
@@ -232,7 +232,13 @@ async function streamWithFallback({
                             'Content-Type': 'application/json',
                             ...(provider.id === 'openrouter' ? { 'HTTP-Referer': 'https://shadow-ai.local', 'X-Title': 'Shadow AI' } : {}),
                         },
-                        body: JSON.stringify({ model: provider.model, messages, stream: true, temperature: 0.7, max_tokens: 1024 }),
+                        body: JSON.stringify({
+                            model: provider.model,
+                            messages,
+                            stream: provider.stream !== false,
+                            temperature: 0.7,
+                            max_tokens: 1024,
+                        }),
                     });
                     clearTimeout(timeoutId);
                 } catch (fetchError) {
@@ -252,10 +258,14 @@ async function streamWithFallback({
                     providerError.providerDetail = detail;
                     throw providerError;
                 }
-                const text = await readSseText(response, (token, fullText) => {
-                    receivedText = fullText;
-                    onToken(token, fullText);
-                });
+                const text =
+                    provider.stream === false
+                        ? String((await response.json()).choices?.[0]?.message?.content || '')
+                        : await readSseText(response, (token, fullText) => {
+                              receivedText = fullText;
+                              onToken(token, fullText);
+                          });
+                if (provider.stream === false && text) onToken(text, text);
                 if (!text.trim()) throw new Error('Empty response');
                 activeProviderKeys.set(provider.id, keyIndex);
                 markProviderSuccess(provider.id);
