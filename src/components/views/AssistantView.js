@@ -422,6 +422,7 @@ export class AssistantView extends LitElement {
         screenshotInterval: { type: Number },
         nextCaptureIn: { type: Number, state: true },
         onScreenAnalysisModeChange: { type: Function },
+        onScreenshotIntervalChange: { type: Function },
     };
 
     constructor() {
@@ -440,6 +441,7 @@ export class AssistantView extends LitElement {
         this.screenshotInterval = 5;
         this.nextCaptureIn = 5;
         this.onScreenAnalysisModeChange = () => {};
+        this.onScreenshotIntervalChange = () => {};
         this._animFrame = null;
         this._captureCountdownTimer = null;
     }
@@ -920,7 +922,21 @@ export class AssistantView extends LitElement {
                 </select>
                 ${
                     this.screenAnalysisMode === 'automatic'
-                        ? html`<span class="capture-countdown">Next capture in ${this.nextCaptureIn}s (${this.screenshotInterval}s interval)</span>`
+                        ? html`<label class="capture-countdown">
+                              Every
+                              <input
+                                  type="number"
+                                  min="1"
+                                  max="3600"
+                                  step="1"
+                                  .value=${this.screenshotInterval}
+                                  @input=${event => {
+                                      const seconds = Number(event.target.value);
+                                      if (Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600) this.onScreenshotIntervalChange(seconds);
+                                  }}
+                              />
+                              seconds · next in ${this.nextCaptureIn}s
+                          </label>`
                         : ''
                 }
             </div>

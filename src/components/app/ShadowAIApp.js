@@ -45,7 +45,7 @@ export class ShadowAIApp extends LitElement {
             flex-wrap: nowrap;
             align-items: center;
             height: 48px;
-            gap: var(--space-sm);
+            gap: clamp(2px, 0.6vw, var(--space-sm));
             padding-right: var(--space-md);
             background: var(--header-solid-background, #101010);
             opacity: 1;
@@ -53,6 +53,8 @@ export class ShadowAIApp extends LitElement {
             pointer-events: auto;
             border-bottom: 1px solid var(--border);
             box-shadow: 0 1px 8px rgba(0, 0, 0, 0.28);
+            overflow-x: auto;
+            scrollbar-width: none;
             app-region: drag;
             -webkit-app-region: drag;
         }
@@ -189,10 +191,13 @@ export class ShadowAIApp extends LitElement {
         .passthrough-button {
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
-            padding: 5px 9px;
+            padding: 5px clamp(5px, 0.8vw, 9px);
             background: var(--bg-elevated);
             color: var(--text-primary);
             cursor: pointer;
+            font-size: clamp(9px, 1.1vw, 12px);
+            white-space: nowrap;
+            flex-shrink: 1;
             -webkit-app-region: no-drag;
         }
 
@@ -648,6 +653,8 @@ export class ShadowAIApp extends LitElement {
         interimTranscription: { type: Object },
         automaticResponse: { type: Boolean },
         audioMode: { type: String },
+        interviewCaptureMode: { type: String },
+        capturePaused: { type: Boolean },
         _providerNotification: { state: true },
         _providerStatus: { state: true },
     };
@@ -683,6 +690,8 @@ export class ShadowAIApp extends LitElement {
         this.interimTranscription = null;
         this.automaticResponse = true;
         this.audioMode = 'speaker_only';
+        this.interviewCaptureMode = 'listener';
+        this.capturePaused = false;
         this._privacyMode = false;
         this._providerNotification = null;
         this._providerNotificationTimer = null;
@@ -734,6 +743,7 @@ export class ShadowAIApp extends LitElement {
             this.responseTextColor = /^#[0-9a-f]{6}$/i.test(prefs.responseTextColor) ? prefs.responseTextColor : '#f5f5f5';
             this.automaticResponse = prefs.automaticResponse !== false;
             this.audioMode = prefs.audioMode || 'speaker_only';
+            this.interviewCaptureMode = prefs.interviewCaptureMode === 'viewer' ? 'viewer' : 'listener';
 
             const prefs2 = await shadowAI.storage.getPreferences();
             this._privacyMode = prefs2.privacyMode ?? false;
@@ -991,7 +1001,7 @@ export class ShadowAIApp extends LitElement {
     }
 
     async handleAudioModeChange(mode) {
-        this.audioMode = ['speaker_only', 'mic_only', 'both'].includes(mode) ? mode : 'speaker_only';
+        this.audioMode = ['speaker_only', 'mic_only', 'both', 'screen_only'].includes(mode) ? mode : 'speaker_only';
         await shadowAI.storage.updatePreference('audioMode', this.audioMode);
         await shadowAI.refreshPreferencesCache();
         if (this.sessionActive) {
@@ -1074,6 +1084,7 @@ export class ShadowAIApp extends LitElement {
         this.interimTranscription = null;
         this.startTime = Date.now();
         this.sessionActive = true;
+        this.capturePaused = false;
         this.currentView = 'assistant';
         this._startTimer();
     }
@@ -1105,9 +1116,9 @@ export class ShadowAIApp extends LitElement {
     }
 
     async handleScreenshotIntervalChange(interval) {
-        this.selectedScreenshotInterval = interval;
-        await shadowAI.storage.updatePreference('selectedScreenshotInterval', interval);
-        if (this.sessionActive) shadowAI.configureScreenAnalysis(this.screenAnalysisMode, interval, this.selectedImageQuality);
+        this.selectedScreenshotInterval = String(Math.min(3600, Math.max(1, Number(interval) || 5)));
+        await shadowAI.storage.updatePreference('selectedScreenshotInterval', this.selectedScreenshotInterval);
+        if (this.sessionActive) shadowAI.configureScreenAnalysis(this.screenAnalysisMode, this.selectedScreenshotInterval, this.selectedImageQuality);
     }
 
     async handleScreenAnalysisModeChange(mode) {
@@ -1149,6 +1160,21 @@ export class ShadowAIApp extends LitElement {
         this.automaticResponse = enabled;
         await shadowAI.storage.updatePreference('automaticResponse', enabled);
         if (!enabled && this._isClickThrough) await this.togglePassthrough();
+        this.requestUpdate();
+    }
+
+    async handleInterviewCaptureModeChange(mode) {
+        this.interviewCaptureMode = mode === 'viewer' ? 'viewer' : 'listener';
+        await shadowAI.storage.updatePreference('interviewCaptureMode', this.interviewCaptureMode);
+        if (this.sessionActive) {
+            shadowAI.stopCapture();
+            await shadowAI.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
+        }
+        this.requestUpdate();
+    }
+
+    setCapturePaused(paused) {
+        this.capturePaused = Boolean(paused);
         this.requestUpdate();
     }
 
@@ -1225,9 +1251,11 @@ export class ShadowAIApp extends LitElement {
                         .onLanguageChange=${l => this.handleLanguageChange(l)}
                         .onScreenshotIntervalChange=${i => this.handleScreenshotIntervalChange(i)}
                         .onImageQualityChange=${q => this.handleImageQualityChange(q)}
+                        .onAudioModeChange=${mode => this.handleAudioModeChange(mode)}
                         .onLayoutModeChange=${lm => this.handleLayoutModeChange(lm)}
                         .backgroundTransparency=${this.backgroundTransparency}
                         .onBackgroundTransparencyChange=${value => this.handleBackgroundTransparencyChange(value)}
+                        .onInterviewCaptureModeChange=${mode => this.handleInterviewCaptureModeChange(mode)}
                     ></customize-view>
                 `;
 
@@ -1253,6 +1281,7 @@ export class ShadowAIApp extends LitElement {
                         .screenAnalysisMode=${this.screenAnalysisMode}
                         .screenshotInterval=${Number(this.selectedScreenshotInterval) || 5}
                         .onScreenAnalysisModeChange=${mode => this.handleScreenAnalysisModeChange(mode)}
+                        .onScreenshotIntervalChange=${seconds => this.handleScreenshotIntervalChange(seconds)}
                         .onApproveQuestion=${question => this.handleApprovedQuestion(question)}
                         .onSendText=${msg => this.handleSendText(msg)}
                         .shouldAnimateResponse=${this.shouldAnimateResponse}
@@ -1483,6 +1512,7 @@ export class ShadowAIApp extends LitElement {
                         <option value="speaker_only">Listen: Interviewer</option>
                         <option value="mic_only">Listen: Me</option>
                         <option value="both">Listen: Both</option>
+                        <option value="screen_only">Screen only</option>
                     </select>
                     <select
                         class="provider-select provider-model-select secondary-header-control"
@@ -1599,18 +1629,11 @@ export class ShadowAIApp extends LitElement {
                     ${
                         isLive
                             ? html`<button
-                                  class="passthrough-button ${this.automaticResponse ? 'active' : ''}"
-                                  aria-label="Toggle automatic or manual interview response mode"
-                                  aria-pressed=${this.automaticResponse}
-                                  title=${
-                                      this.automaticResponse
-                                          ? 'Automatic: answer after the configured response delay'
-                                          : 'Manual: review or edit the question, then click OK'
-                                  }
-                                  @click=${() => this.handleAutomaticResponseChange(!this.automaticResponse)}
+                                  class="passthrough-button ${this.capturePaused ? 'active' : ''}"
+                                  @click=${() => shadowAI.toggleCapturePause()}
                               >
-                                  ${this.automaticResponse ? 'Automatic' : 'Manual'}
-                              </button>`
+                                  ${this.capturePaused ? 'Resume' : 'Pause'}
+                              </button> `
                             : ''
                     }
                     <button

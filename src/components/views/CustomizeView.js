@@ -193,8 +193,10 @@ export class CustomizeView extends LitElement {
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
         onImageQualityChange: { type: Function },
+        onAudioModeChange: { type: Function },
         onLayoutModeChange: { type: Function },
         onBackgroundTransparencyChange: { type: Function },
+        onInterviewCaptureModeChange: { type: Function },
         isClearing: { type: Boolean },
         isRestoring: { type: Boolean },
         clearStatusMessage: { type: String },
@@ -211,8 +213,10 @@ export class CustomizeView extends LitElement {
         this.onProfileChange = () => {};
         this.onLanguageChange = () => {};
         this.onImageQualityChange = () => {};
+        this.onAudioModeChange = () => {};
         this.onLayoutModeChange = () => {};
         this.onBackgroundTransparencyChange = () => {};
+        this.onInterviewCaptureModeChange = () => {};
         this.googleSearchEnabled = true;
         this.privacyMode = false;
         this.vadSilenceMs = 500;
@@ -226,6 +230,7 @@ export class CustomizeView extends LitElement {
         this.backgroundTransparency = 0.8;
         this.fontSize = 20;
         this.audioMode = 'speaker_only';
+        this.interviewCaptureMode = 'listener';
         this.theme = 'dark';
         this._loadFromStorage();
     }
@@ -246,6 +251,7 @@ export class CustomizeView extends LitElement {
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
+            this.interviewCaptureMode = prefs.interviewCaptureMode === 'viewer' ? 'viewer' : 'listener';
             this.theme = prefs.theme ?? 'dark';
             if (keybinds) {
                 this.keybinds = { ...this.getDefaultKeybinds(), ...keybinds };
@@ -314,6 +320,8 @@ export class CustomizeView extends LitElement {
             toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
+            captureScreen: isMac ? 'Cmd+Shift+F' : 'Ctrl+Shift+F',
+            togglePause: isMac ? 'Cmd+Shift+P' : 'Ctrl+Shift+P',
             previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -334,6 +342,8 @@ export class CustomizeView extends LitElement {
             { key: 'toggleMaximize', name: 'Maximize / Restore', description: 'Maximize the window or restore its previous size' },
             { key: 'toggleClickThrough', name: 'Toggle Click-through', description: 'Enable or disable click-through mode' },
             { key: 'nextStep', name: 'Ask Next Step', description: 'Take screenshot and ask for next step' },
+            { key: 'captureScreen', name: 'Capture Screen Request', description: 'Send a manual screen request' },
+            { key: 'togglePause', name: 'Pause / Resume Capture', description: 'Pause or resume audio and screen requests' },
             { key: 'previousResponse', name: 'Previous Response', description: 'Move to previous AI response' },
             { key: 'nextResponse', name: 'Next Response', description: 'Move to next AI response' },
             { key: 'scrollUp', name: 'Scroll Response Up', description: 'Scroll response content upward' },
@@ -372,6 +382,7 @@ export class CustomizeView extends LitElement {
     async handleAudioModeSelect(e) {
         this.audioMode = e.target.value;
         await shadowAI.storage.updatePreference('audioMode', this.audioMode);
+        this.onAudioModeChange(this.audioMode);
         this.requestUpdate();
     }
 
@@ -624,6 +635,7 @@ export class CustomizeView extends LitElement {
                             <option value="speaker_only">Speaker Only (Interviewer)</option>
                             <option value="mic_only">Microphone Only (Me)</option>
                             <option value="both">Both Speaker and Microphone</option>
+                            <option value="screen_only">Screen Only (No Audio)</option>
                         </select>
                     </div>
                     <div class="form-group">

@@ -78,8 +78,32 @@ const PROVIDERS = [
         baseUrl: 'https://integrate.api.nvidia.com/v1',
         modelsUrl: 'https://integrate.api.nvidia.com/v1/models',
         modelEnv: 'NVIDIA_MODEL',
-        model: 'meta/llama-3.1-70b-instruct',
-        models: ['meta/llama-3.1-70b-instruct', 'meta/llama-3.3-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct'],
+        model: 'openai/gpt-oss-20b',
+        models: ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'meta/llama-3.3-70b-instruct'],
+        transport: 'openai',
+    },
+    {
+        id: 'tokenrouter',
+        label: 'TokenRouter',
+        credentialKey: 'tokenrouterApiKey',
+        envKey: 'TOKENROUTER_API_KEY',
+        baseUrl: 'https://api.tokenrouter.com/v1',
+        modelsUrl: 'https://api.tokenrouter.com/v1/models',
+        modelEnv: 'TOKENROUTER_MODEL',
+        model: 'openai/gpt-4o-mini',
+        models: ['openai/gpt-4o-mini'],
+        transport: 'openai',
+    },
+    {
+        id: 'aimlapi',
+        label: 'AI/ML API',
+        credentialKey: 'aimlapiApiKey',
+        envKey: 'AIMLAPI_API_KEY',
+        baseUrl: 'https://api.aimlapi.com/v1',
+        modelsUrl: 'https://api.aimlapi.com/v1/models',
+        modelEnv: 'AIMLAPI_MODEL',
+        model: 'openai/gpt-5-5',
+        models: ['openai/gpt-5-5'],
         transport: 'openai',
     },
     {
@@ -90,8 +114,8 @@ const PROVIDERS = [
         baseUrl: '', // Gemini uses @google/genai SDK, not OpenAI-compatible
         modelsUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
         modelEnv: 'GEMINI_MODEL',
-        model: 'gemini-2.5-flash',
-        models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
+        model: 'gemini-3.6-flash',
+        models: ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
         transport: 'google',
     },
 ];
@@ -103,7 +127,7 @@ function defaultCredentials() {
 
 /** Derive provider-key mapping for env-file sync */
 function providerKeyMapping() {
-    return Object.fromEntries(PROVIDERS.map(p => [p.id, { envKey: p.envKey, credential: p.credentialKey }]));
+    return Object.fromEntries(PROVIDERS.map(p => [p.id, { envKey: p.envKey, credential: p.credentialKey, modelEnv: p.modelEnv }]));
 }
 
 /** Build a lookup map { id → label } for the UI */

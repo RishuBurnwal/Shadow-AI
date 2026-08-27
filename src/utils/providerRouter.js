@@ -8,6 +8,11 @@ const activeProviderKeys = new Map();
 const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
 const PER_KEY_FAILURES = new Set(['credits_exhausted', 'rate_limited', 'auth_error']);
 
+function isValidModelId(value) {
+    const model = String(value || '').trim();
+    return model.length > 0 && model.length <= 200 && /^[A-Za-z0-9._:/-]+$/.test(model);
+}
+
 function normalizeModelIds(values) {
     return [
         ...new Set(
@@ -17,7 +22,7 @@ function normalizeModelIds(values) {
                         .replace(/^models\//, '')
                         .trim()
                 )
-                .filter(value => value && value.length <= 200 && /^[A-Za-z0-9._:/-]+$/.test(value))
+                .filter(isValidModelId)
         ),
     ].sort((a, b) => a.localeCompare(b));
 }
@@ -200,6 +205,7 @@ async function streamWithFallback({
         let lastError;
         for (let keyIndex = startKeyIndex; keyIndex < apiKeys.length; keyIndex++) {
             let response;
+            let receivedText = '';
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), PROVIDER_REQUEST_TIMEOUT_MS);
@@ -246,13 +252,22 @@ async function streamWithFallback({
                     providerError.providerDetail = detail;
                     throw providerError;
                 }
-                const text = await readSseText(response, onToken);
+                const text = await readSseText(response, (token, fullText) => {
+                    receivedText = fullText;
+                    onToken(token, fullText);
+                });
                 if (!text.trim()) throw new Error('Empty response');
                 activeProviderKeys.set(provider.id, keyIndex);
                 markProviderSuccess(provider.id);
                 onProviderSelected({ provider: provider.id, model: provider.model });
                 return { provider: provider.id, model: provider.model, text };
             } catch (error) {
+                if (receivedText.trim()) {
+                    activeProviderKeys.set(provider.id, keyIndex);
+                    markProviderSuccess(provider.id);
+                    onProviderSelected({ provider: provider.id, model: provider.model });
+                    return { provider: provider.id, model: provider.model, text: receivedText };
+                }
                 lastError = error;
                 const classification = classifyProviderFailure(error, error.status || 0);
                 markProviderFailure(provider.id, error, error.status || 0);
@@ -288,4 +303,5 @@ module.exports = {
     getProviderRuntimeStatus,
     discoverProviderModels,
     getCachedProviderModels,
+    isValidModelId,
 };

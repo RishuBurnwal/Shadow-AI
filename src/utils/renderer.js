@@ -8,6 +8,7 @@ let audioProcessor = null;
 let micAudioProcessor = null;
 let micAudioContext = null;
 let micStream = null;
+let capturePaused = false;
 let audioBuffer = [];
 const SAMPLE_RATE = 24000;
 const captureSampleRate = () => (preferencesCache?.providerMode === 'local' ? 16000 : SAMPLE_RATE);
@@ -324,6 +325,8 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     // Refresh preferences cache
     await loadPreferencesCache();
     const audioMode = preferencesCache.audioMode || 'speaker_only';
+    const viewerMode = audioMode === 'screen_only' || preferencesCache.interviewCaptureMode === 'viewer';
+    capturePaused = false;
 
     try {
         if (isMacOS) {
@@ -331,7 +334,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             console.log('Starting macOS capture with SystemAudioDump...');
 
             // Start macOS system audio only when the selected mode needs it.
-            if (audioMode !== 'mic_only') {
+            if (!viewerMode && audioMode !== 'mic_only') {
                 const audioResult = await ipcRenderer.invoke('start-macos-audio');
                 if (!audioResult.success) throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
             }
@@ -348,7 +351,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
 
             console.log('macOS screen capture started - audio handled by SystemAudioDump');
 
-            if (audioMode === 'mic_only' || audioMode === 'both') {
+            if (!viewerMode && (audioMode === 'mic_only' || audioMode === 'both')) {
                 try {
                     micStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
@@ -379,7 +382,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                         height: { ideal: 1080 },
                     },
                     audio:
-                        audioMode === 'mic_only'
+                        viewerMode || audioMode === 'mic_only'
                             ? false
                             : {
                                   sampleRate: SAMPLE_RATE,
@@ -393,7 +396,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 console.log('Linux system audio capture via getDisplayMedia succeeded');
 
                 // Setup audio processing for Linux system audio
-                if (audioMode !== 'mic_only') {
+                if (!viewerMode && audioMode !== 'mic_only') {
                     setupLinuxSystemAudioProcessing().catch(err => console.error('Linux system AudioWorklet setup failed:', err));
                 }
             } catch (systemAudioError) {
@@ -411,7 +414,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             }
 
             // Additionally get microphone input for Linux based on audio mode
-            if (audioMode === 'mic_only' || audioMode === 'both') {
+            if (!viewerMode && (audioMode === 'mic_only' || audioMode === 'both')) {
                 try {
                     micStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
@@ -446,7 +449,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                     height: { ideal: 1080 },
                 },
                 audio:
-                    audioMode === 'mic_only'
+                    viewerMode || audioMode === 'mic_only'
                         ? false
                         : {
                               sampleRate: SAMPLE_RATE,
@@ -460,11 +463,11 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
             console.log('Windows capture started with loopback audio');
 
             // Setup audio processing for Windows loopback audio only
-            if (audioMode !== 'mic_only') {
+            if (!viewerMode && audioMode !== 'mic_only') {
                 setupWindowsLoopbackProcessing().catch(err => console.error('Windows loopback AudioWorklet setup failed:', err));
             }
 
-            if (audioMode === 'mic_only' || audioMode === 'both') {
+            if (!viewerMode && (audioMode === 'mic_only' || audioMode === 'both')) {
                 try {
                     micStream = await navigator.mediaDevices.getUserMedia({
                         audio: {
@@ -503,7 +506,7 @@ function configureScreenAnalysis(mode = 'manual', screenshotIntervalSeconds = 5,
     screenshotInterval = null;
     currentImageQuality = imageQuality || currentImageQuality;
     const seconds = Math.max(1, Number(screenshotIntervalSeconds) || 5);
-    if (mode === 'automatic') screenshotInterval = setInterval(() => captureManualScreenshot(currentImageQuality), seconds * 1000);
+    if (!capturePaused && mode === 'automatic') screenshotInterval = setInterval(() => captureManualScreenshot(currentImageQuality), seconds * 1000);
     return { mode: mode === 'automatic' ? 'automatic' : 'manual', intervalSeconds: seconds };
 }
 
@@ -529,7 +532,7 @@ async function setupLinuxMicProcessing(micStream) {
     // Handle audio chunks from the worklet thread
     micNode.port.onmessage = event => {
         const { channelName, mimeType, data } = event.data;
-        if (!data) return;
+        if (!data || capturePaused) return;
 
         // Base64 encode the Int16 buffer for IPC transport
         const base64Data = arrayBufferToBase64(data);
@@ -570,7 +573,7 @@ async function setupLinuxSystemAudioProcessing() {
     // Handle audio chunks from the worklet thread
     node.port.onmessage = event => {
         const { channelName, mimeType, data } = event.data;
-        if (!data) return;
+        if (!data || capturePaused) return;
 
         // Base64 encode the Int16 buffer for IPC transport
         const base64Data = arrayBufferToBase64(data);
@@ -611,7 +614,7 @@ async function setupWindowsLoopbackProcessing() {
     // Handle audio chunks from the worklet thread
     node.port.onmessage = event => {
         const { channelName, mimeType, data } = event.data;
-        if (!data) return;
+        if (!data || capturePaused) return;
 
         // Base64 encode the Int16 buffer for IPC transport
         const base64Data = arrayBufferToBase64(data);
@@ -723,6 +726,7 @@ If its a mcq question, give me the answer no bs, complete answer.`;
 
 async function captureManualScreenshot(imageQuality = null) {
     console.log('Manual screenshot triggered');
+    if (capturePaused) return;
     const quality = imageQuality || currentImageQuality;
 
     if (!mediaStream) {
@@ -831,6 +835,18 @@ async function captureManualScreenshot(imageQuality = null) {
 
 // Expose functions to global scope for external access
 window.captureManualScreenshot = captureManualScreenshot;
+
+function toggleCapturePause() {
+    capturePaused = !capturePaused;
+    if (capturePaused) configureScreenAnalysis('manual');
+    else
+        loadPreferencesCache().then(prefs =>
+            configureScreenAnalysis(prefs.screenAnalysisMode, prefs.selectedScreenshotInterval, currentImageQuality)
+        );
+    shadowAI.setStatus(capturePaused ? 'Paused' : 'Screen sharing active');
+    shadowAI.element().setCapturePaused(capturePaused);
+    return capturePaused;
+}
 
 function stopCapture() {
     if (screenshotInterval) {
@@ -979,6 +995,9 @@ function handleShortcut(shortcutKey) {
             captureManualScreenshot();
         }
     }
+    if (shortcutKey === 'capture-screen' && currentView === 'assistant' && shadowAI.element().screenAnalysisMode === 'manual')
+        captureManualScreenshot();
+    if (shortcutKey === 'toggle-capture-pause' && currentView === 'assistant') toggleCapturePause();
 }
 
 // Create reference to the main app element
@@ -1297,6 +1316,7 @@ const shadowAI = {
     initializeGemini,
     initializeCloud,
     initializeLocal,
+    toggleCapturePause,
     startCapture,
     stopCapture,
     configureScreenAnalysis,

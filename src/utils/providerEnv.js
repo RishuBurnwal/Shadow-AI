@@ -63,7 +63,7 @@ function syncProviderEnvironment() {
 
     const previousCredentials = storage.getCredentials();
     const credentials = { ...previousCredentials };
-    for (const { envKey, credential } of Object.values(PROVIDER_KEYS)) {
+    for (const { envKey, credential, modelEnv } of Object.values(PROVIDER_KEYS)) {
         const value = env[envKey] || '';
         credentials[credential] = value;
         if (value) process.env[envKey] = value;
@@ -73,6 +73,7 @@ function syncProviderEnvironment() {
         for (const [key, numberedValue] of Object.entries(env)) {
             if (key.startsWith(`${envKey}_`) && /^\d+$/.test(key.slice(envKey.length + 1)) && numberedValue) process.env[key] = numberedValue;
         }
+        if (env[modelEnv]) process.env[modelEnv] = env[modelEnv];
     }
     const changed = Object.values(PROVIDER_KEYS).some(({ credential }) => previousCredentials[credential] !== credentials[credential]);
     if (changed) storage.setCredentials(credentials);
@@ -93,6 +94,18 @@ function setProviderKey(provider, value) {
     return syncProviderEnvironment();
 }
 
+function setProviderModel(provider, value) {
+    const definition = PROVIDER_KEYS[String(provider || '').toLowerCase()];
+    const model = String(value || '').trim();
+    if (!definition || !/^[A-Za-z0-9._:/-]{1,200}$/.test(model)) throw new Error('Invalid provider model');
+    const modelEnv = `${definition.envKey.replace(/_API_KEY$/, '')}_MODEL`;
+    const ENV_PATH = getEnvPath();
+    const current = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf8') : '';
+    const updated = replaceEnvValue(current, modelEnv, model);
+    fs.writeFileSync(ENV_PATH, updated, { encoding: 'utf8', mode: 0o600 });
+    process.env[modelEnv] = model;
+}
+
 function getProviderStatus() {
     const credentials = syncProviderEnvironment();
     return Object.fromEntries(Object.entries(PROVIDER_KEYS).map(([provider, { credential }]) => [provider, Boolean(credentials[credential])]));
@@ -107,5 +120,6 @@ module.exports = {
     readProviderEnv,
     syncProviderEnvironment,
     setProviderKey,
+    setProviderModel,
     getProviderStatus,
 };

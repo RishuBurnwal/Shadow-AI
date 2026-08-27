@@ -4,8 +4,6 @@ const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
 const { getSystemPrompt } = require('./prompts');
 const {
-    getAvailableModel,
-    incrementLimitCount,
     getApiKey,
     getGroqApiKey,
     getCredentials,
@@ -480,9 +478,6 @@ async function sendToGroq(transcription) {
 }
 
 async function sendToGeminiText(transcription, appendUser = true, screenshot = getRecentScreenshot()) {
-    // If answer was cancelled (barge-in), skip
-    if (!_currentAnswerAbort || _currentAnswerAbort.signal.aborted) return null;
-
     const apiKey = getApiKey();
     if (!apiKey) {
         console.log('No Gemini API key configured');
@@ -494,7 +489,10 @@ async function sendToGeminiText(transcription, appendUser = true, screenshot = g
         return;
     }
 
-    const modelToUse = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    if (!_currentAnswerAbort) _currentAnswerAbort = new AbortController();
+    if (_currentAnswerAbort.signal.aborted) return null;
+    const answerAbort = _currentAnswerAbort;
+    const modelToUse = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
     if (isDebug) console.log(`Sending to Gemini (${modelToUse}):`, transcription.substring(0, 100) + '...');
 
     const history = currentSession ? currentSession.groqHistory : [];
@@ -573,6 +571,8 @@ async function sendToGeminiText(transcription, appendUser = true, screenshot = g
         console.error('Error calling Gemini API:', error);
         sendToRenderer('update-status', 'Gemini error: ' + error.message);
         throw error;
+    } finally {
+        if (_currentAnswerAbort === answerAbort) _currentAnswerAbort = null;
     }
 }
 
@@ -1185,7 +1185,7 @@ async function sendAudioToGemini(base64Data, geminiSessionRef) {
 
 async function sendImageToGeminiHttp(base64Data, prompt) {
     // Get available model based on rate limits
-    const model = getAvailableModel();
+    const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
     const apiKey = getApiKey();
     if (!apiKey) {
@@ -1212,7 +1212,7 @@ async function sendImageToGeminiHttp(base64Data, prompt) {
         });
 
         // Increment count after successful call
-        incrementLimitCount(model);
+        incrementCharUsage('gemini', model, 0);
 
         // Stream the response
         let fullText = '';
@@ -1351,9 +1351,8 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return result;
             }
 
-            // Use HTTP API instead of realtime session
-            const result = await sendImageToGeminiHttp(data, prompt);
-            return result;
+            const result = await sendToAnswerProvider(prompt || 'Analyze this screen and provide a concise, helpful answer.');
+            return result?.text ? { success: true, model: result.model } : { success: false, error: 'No answer provider response' };
         } catch (error) {
             console.error('Error sending image:', error);
             return { success: false, error: error.message };

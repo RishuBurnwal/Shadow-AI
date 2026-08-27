@@ -11,7 +11,13 @@ const storage = require('./storage');
 const soul = require('./soul');
 const memory = require('./memory');
 const providerEnv = require('./utils/providerEnv');
-const { PROVIDER_DEFINITIONS, getProviderRuntimeStatus, getConfiguredProviders, discoverProviderModels } = require('./utils/providerRouter');
+const {
+    PROVIDER_DEFINITIONS,
+    getProviderRuntimeStatus,
+    getConfiguredProviders,
+    discoverProviderModels,
+    isValidModelId,
+} = require('./utils/providerRouter');
 const { providerLabelMap } = require('./utils/providers.config');
 
 const geminiSessionRef = { current: null };
@@ -32,7 +38,7 @@ function applyProviderSelection(selection) {
 function applyProviderModels(models = {}) {
     for (const definition of PROVIDER_DEFINITIONS) {
         const selected = models[definition.id];
-        if (selected && definition.models.includes(selected)) process.env[definition.modelEnv] = selected;
+        if (isValidModelId(selected)) process.env[definition.modelEnv] = selected;
     }
 }
 
@@ -503,7 +509,7 @@ function setupGeneralIpcHandlers() {
             delete providerModels.gemma;
             providerModels[definition.id] = model;
             storage.updatePreference('providerModels', providerModels);
-            process.env[definition.modelEnv] = model;
+            providerEnv.setProviderModel(definition.id, model);
             return { success: true };
         } catch (error) {
             return { success: false, error: error.message };

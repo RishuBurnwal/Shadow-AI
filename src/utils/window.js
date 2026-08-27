@@ -110,6 +110,8 @@ function getDefaultKeybinds() {
         toggleVisibility: isMac ? 'Cmd+\\' : 'Ctrl+\\',
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
+        captureScreen: isMac ? 'Cmd+Shift+F' : 'Ctrl+Shift+F',
+        togglePause: isMac ? 'Cmd+Shift+P' : 'Ctrl+Shift+P',
         previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
@@ -144,6 +146,19 @@ function toggleMaximized(mainWindow) {
     mainWindow.maximize();
     mainWindow.focus();
     return true;
+}
+
+function registerCaptureShortcuts(keybinds, mainWindow, shortcutRegistry = globalShortcut) {
+    for (const [action, shortcut] of Object.entries({ captureScreen: 'capture-screen', togglePause: 'toggle-capture-pause' })) {
+        const keybind = keybinds[action];
+        if (!keybind) continue;
+        try {
+            shortcutRegistry.register(keybind, () => mainWindow.webContents.send('handle-shortcut', shortcut));
+            console.log(`Registered ${action}: ${keybind}`);
+        } catch (error) {
+            console.error(`Failed to register ${action} (${keybind}):`, error);
+        }
+    }
 }
 
 function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessionRef) {
@@ -255,6 +270,8 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             console.error(`Failed to register nextStep (${keybinds.nextStep}):`, error);
         }
     }
+
+    registerCaptureShortcuts(keybinds, mainWindow);
 
     // Register previous response shortcut
     if (keybinds.previousResponse) {
@@ -402,6 +419,7 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
 module.exports = {
     createWindow,
     getDefaultKeybinds,
+    registerCaptureShortcuts,
     setupWindowIpcHandlers,
     toggleMaximized,
     toggleMinimized,

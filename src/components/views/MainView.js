@@ -810,6 +810,8 @@ export class MainView extends LitElement {
             openaiApiKey: credentials.openaiApiKey || '',
             perplexityApiKey: credentials.perplexityApiKey || '',
             nvidiaApiKey: credentials.nvidiaApiKey || '',
+            tokenrouterApiKey: credentials.tokenrouterApiKey || '',
+            aimlapiApiKey: credentials.aimlapiApiKey || '',
         };
         this.requestUpdate();
     }
@@ -949,6 +951,8 @@ export class MainView extends LitElement {
             { name: 'OpenAI', credential: 'openaiApiKey', status: 'openai', url: 'https://platform.openai.com/api-keys' },
             { name: 'Perplexity', credential: 'perplexityApiKey', status: 'perplexity', url: 'https://www.perplexity.ai/settings/api' },
             { name: 'NVIDIA', credential: 'nvidiaApiKey', status: 'nvidia', url: 'https://build.nvidia.com' },
+            { name: 'TokenRouter', credential: 'tokenrouterApiKey', status: 'tokenrouter', url: 'https://api.tokenrouter.com' },
+            { name: 'AI/ML API', credential: 'aimlapiApiKey', status: 'aimlapi', url: 'https://aimlapi.com' },
         ];
         return html`
             <div class="form-group">

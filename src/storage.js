@@ -40,6 +40,7 @@ const DEFAULT_PREFERENCES = {
     selectedLanguage: 'en-US',
     selectedScreenshotInterval: '5',
     screenAnalysisMode: 'manual',
+    interviewCaptureMode: 'listener',
     includeRecentScreenshotWithVoice: true,
     selectedImageQuality: 'medium',
     advancedMode: false,
