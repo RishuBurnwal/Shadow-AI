@@ -31,6 +31,8 @@ function getLocalAi() {
 // Provider mode: 'byok', 'cloud', or 'local'
 let currentProviderMode = 'byok';
 let currentAudioMode = 'speaker_only';
+let activeAnswerRequest = null;
+let pendingAnswerRequest = null;
 const deepgramSourceSessions = new Map();
 const recentScreenshotStore = createRecentScreenshotStore();
 
@@ -576,7 +578,28 @@ async function sendToGeminiText(transcription, appendUser = true, screenshot = g
     }
 }
 
-async function sendToAnswerProvider(transcription) {
+function sendToAnswerProvider(transcription) {
+    if (activeAnswerRequest) {
+        pendingAnswerRequest = transcription;
+        return activeAnswerRequest;
+    }
+    activeAnswerRequest = (async () => {
+        let next = transcription;
+        let result;
+        do {
+            pendingAnswerRequest = null;
+            result = await sendToAnswerProviderNow(next);
+            next = pendingAnswerRequest;
+        } while (next);
+        return result;
+    })().finally(() => {
+        activeAnswerRequest = null;
+        pendingAnswerRequest = null;
+    });
+    return activeAnswerRequest;
+}
+
+async function sendToAnswerProviderNow(transcription) {
     if (!transcription || !transcription.trim()) return;
     const screenshot = getRecentScreenshot();
 
@@ -591,8 +614,11 @@ async function sendToAnswerProvider(transcription) {
         NVIDIA_API_KEY: credentials.nvidiaApiKey || process.env.NVIDIA_API_KEY,
     };
     const providers = getConfiguredProviders(env);
+    const automaticProviderSelection = String(env.SHADOW_AI_PROVIDER || 'auto').toLowerCase() === 'auto';
     const genericProviders = providers.map(provider =>
-        provider.id === 'groq' && !process.env.GROQ_MODEL ? { ...provider, model: getModelForToday() || provider.model } : provider
+        provider.id === 'groq' && automaticProviderSelection && !process.env.GROQ_MODEL
+            ? { ...provider, model: getModelForToday() || provider.model }
+            : provider
     );
 
     if (providers[0]?.id === 'gemini') {
@@ -674,7 +700,7 @@ async function sendToAnswerProvider(transcription) {
             return null;
         }
         console.warn('Hosted answer providers failed:', error.failures || error.message);
-        if (providers.some(provider => provider.id === 'gemini')) {
+        if (automaticProviderSelection && providers.some(provider => provider.id === 'gemini')) {
             sendToRenderer('provider-notification', { type: 'warning', message: 'Hosted providers unavailable. Switching to Gemini.' });
             try {
                 return await sendToGeminiText(transcription, false, screenshot);

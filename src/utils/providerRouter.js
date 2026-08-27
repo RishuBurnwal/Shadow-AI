@@ -148,7 +148,7 @@ function getConfiguredProviders(env = process.env) {
     if (requested === 'auto') return configured;
     const selected = configured.find(provider => provider.id === requested);
     if (!selected) return configured;
-    return [selected, ...configured.filter(provider => provider.id !== requested)];
+    return [selected];
 }
 
 async function readSseText(response, onToken) {
