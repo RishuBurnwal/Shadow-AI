@@ -726,7 +726,10 @@ If its a mcq question, give me the answer no bs, complete answer.`;
 
 async function captureManualScreenshot(imageQuality = null) {
     console.log('Manual screenshot triggered');
-    if (capturePaused) return;
+    if (capturePaused) {
+        shadowAI.setStatus('Screen sharing is paused');
+        return;
+    }
     const quality = imageQuality || currentImageQuality;
 
     if (!mediaStream) {
@@ -995,8 +998,8 @@ function handleShortcut(shortcutKey) {
             captureManualScreenshot();
         }
     }
-    if (shortcutKey === 'capture-screen' && currentView === 'assistant' && shadowAI.element().screenAnalysisMode === 'manual')
-        captureManualScreenshot();
+    // A shortcut is an explicit manual request, including while automatic analysis is enabled.
+    if (shortcutKey === 'capture-screen' && currentView === 'assistant') captureManualScreenshot();
     if (shortcutKey === 'toggle-capture-pause' && currentView === 'assistant') toggleCapturePause();
 }
 

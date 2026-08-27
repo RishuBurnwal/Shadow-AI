@@ -1147,12 +1147,13 @@ export class ShadowAIApp extends LitElement {
     }
 
     async handleSendText(message) {
+        this.setStatus('Thinking...');
+        this._awaitingNewResponse = true;
         const result = await window.shadowAI.sendTextMessage(message);
         if (!result.success) {
             this.setStatus('Error sending message: ' + result.error);
         } else {
-            this.setStatus('Message sent...');
-            this._awaitingNewResponse = true;
+            this.setStatus('Listening...');
         }
     }
 

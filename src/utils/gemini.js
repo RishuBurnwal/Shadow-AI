@@ -1420,17 +1420,22 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             }
         }
 
-        if (currentProviderMode === 'byok-deepgram') {
-            sendToAnswerProvider(text.trim());
-            return { success: true };
+        // Text questions use the same answer-provider pipeline as screen analysis.
+        // A hosted provider does not require a Gemini Live audio session to answer.
+        if (currentProviderMode === 'byok' || currentProviderMode === 'byok-deepgram') {
+            try {
+                const result = await sendToAnswerProvider(text.trim());
+                return result?.text ? { success: true, model: result.model } : { success: false, error: 'No answer provider response' };
+            } catch (error) {
+                console.error('Error sending text to answer provider:', error);
+                return { success: false, error: error.message };
+            }
         }
 
         if (!geminiSessionRef.current) return { success: false, error: 'No active Gemini session' };
 
         try {
             if (isDebug) console.log('Sending text message:', text);
-
-            sendToAnswerProvider(text.trim());
 
             await geminiSessionRef.current.sendRealtimeInput({ text: text.trim() });
             return { success: true };
