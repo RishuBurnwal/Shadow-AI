@@ -522,10 +522,19 @@ async function sendToGeminiText(transcription, appendUser = true, screenshot = g
             ...messages,
         ];
 
-        const response = await ai.models.generateContentStream({
-            model: modelToUse,
-            contents: messagesWithSystem,
-        });
+        let response;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                response = await ai.models.generateContentStream({
+                    model: modelToUse,
+                    contents: messagesWithSystem,
+                });
+                break;
+            } catch (error) {
+                if (attempt || Number(error.status) < 500) throw error;
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
 
         let fullText = '';
         let isFirst = true;
