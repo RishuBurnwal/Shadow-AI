@@ -5,7 +5,6 @@ const invokeChannels = new Set([
     'get-app-version',
     'get-audio-worklet-source',
     'get-provider-status',
-    'initialize-cloud',
     'initialize-gemini',
     'initialize-local',
     'open-external',

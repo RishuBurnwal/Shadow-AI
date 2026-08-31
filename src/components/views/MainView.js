@@ -45,70 +45,6 @@ export class MainView extends LitElement {
             margin-bottom: var(--space-md);
         }
 
-        /* ── Cloud promo card ── */
-
-        .cloud-promo {
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            padding: 14px 16px;
-            border-radius: var(--radius-md);
-            border: 1px solid rgba(59, 130, 246, 0.45);
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.09) 100%);
-            cursor: pointer;
-            transition:
-                border-color 0.2s,
-                background 0.2s;
-        }
-
-        .cloud-promo:hover {
-            border-color: rgba(59, 130, 246, 0.65);
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.16) 0%, rgba(139, 92, 246, 0.12) 100%);
-            box-shadow:
-                0 0 20px rgba(59, 130, 246, 0.15),
-                0 0 40px rgba(139, 92, 246, 0.08);
-        }
-
-        .cloud-promo-glow {
-            position: absolute;
-            top: -40%;
-            right: -20%;
-            width: 120px;
-            height: 120px;
-            background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
-            pointer-events: none;
-        }
-
-        .cloud-promo-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .cloud-promo-title {
-            font-size: var(--font-size-sm);
-            font-weight: var(--font-weight-semibold);
-            color: var(--text-primary);
-        }
-
-        .cloud-promo-arrow {
-            color: var(--accent);
-            font-size: 16px;
-            transition: transform 0.2s;
-        }
-
-        .cloud-promo:hover .cloud-promo-arrow {
-            transform: translateX(2px);
-        }
-
-        .cloud-promo-desc {
-            font-size: var(--font-size-xs);
-            color: var(--text-secondary);
-            line-height: var(--line-height);
-        }
-
         /* ── Form controls ── */
 
         .form-group {
@@ -533,13 +469,11 @@ export class MainView extends LitElement {
         whisperDownloading: { type: Boolean },
         // Internal state
         _mode: { state: true },
-        _token: { state: true },
         _geminiKey: { state: true },
         _groqKey: { state: true },
         _openaiKey: { state: true },
         _apiKeys: { state: true },
         _showApiManager: { state: true },
-        _tokenError: { state: true },
         _keyError: { state: true },
         // Local AI state
         _ollamaHost: { state: true },
@@ -558,14 +492,12 @@ export class MainView extends LitElement {
         this.whisperDownloading = false;
 
         this._mode = 'byok';
-        this._token = '';
         this._geminiKey = '';
         this._groqKey = '';
         this._openaiKey = '';
         this._apiKeys = {};
         this._showApiManager = false;
         this._providerStatus = {};
-        this._tokenError = false;
         this._keyError = false;
         this._showLocalHelp = false;
         this._ollamaHost = 'http://127.0.0.1:11434';
@@ -596,7 +528,6 @@ export class MainView extends LitElement {
             }
 
             // Load keys
-            this._token = creds.cloudToken || '';
             this._geminiKey = (await shadowAI.storage.getApiKey().catch(() => '')) || '';
             this._groqKey = (await shadowAI.storage.getGroqApiKey().catch(() => '')) || '';
             this._openaiKey = creds.openaiKey || '';
@@ -748,19 +679,8 @@ export class MainView extends LitElement {
 
     async _saveMode(mode) {
         this._mode = mode;
-        this._tokenError = false;
         this._keyError = false;
         await shadowAI.storage.updatePreference('providerMode', mode);
-        this.requestUpdate();
-    }
-
-    async _saveToken(val) {
-        this._token = val;
-        this._tokenError = false;
-        try {
-            const creds = await shadowAI.storage.getCredentials().catch(() => ({}));
-            await shadowAI.storage.setCredentials({ ...creds, cloudToken: val });
-        } catch (e) {}
         this.requestUpdate();
     }
 
@@ -862,7 +782,6 @@ export class MainView extends LitElement {
         this._keyError = this._mode !== 'local';
         this.requestUpdate();
         setTimeout(() => {
-            this._tokenError = false;
             this._keyError = false;
             this.requestUpdate();
         }, 2000);
@@ -938,10 +857,6 @@ export class MainView extends LitElement {
         `;
     }
 
-    // ── Cloud mode ──
-    // Cloud UI intentionally disabled. Backend cloud wiring is still present in
-    // the codebase, but the renderer no longer exposes this setup path.
-
     // ── BYOK mode ──
 
     _renderByokMode() {
@@ -1009,8 +924,6 @@ export class MainView extends LitElement {
             }
             ${this._renderStartButton()} ${this._renderDivider()}
 
-            <!-- Cloud promo intentionally removed from the active UI. -->
-
             <div class="mode-links">
                 <button class="mode-link" @click=${() => this._saveMode('local')}>Use local AI</button>
             </div>
@@ -1065,8 +978,6 @@ export class MainView extends LitElement {
 
             ${this._renderStartButton()} ${this._renderDivider()}
 
-            <!-- Cloud promo intentionally removed from the active UI. -->
-
             <div class="mode-links">
                 <button class="mode-link" @click=${() => this._saveMode('byok')}>Use own API keys</button>
             </div>
@@ -1107,7 +1018,6 @@ export class MainView extends LitElement {
                 }
                 <div class="page-subtitle">${this._mode === 'byok' ? 'Bring your own API keys' : 'Run models locally on your machine'}</div>
 
-                <!-- Cloud mode render branch intentionally disabled. -->
                 ${this._mode === 'byok' ? this._renderByokMode() : ''}
                 ${this._mode === 'local' ? (this._showLocalHelp ? this._renderLocalHelp() : this._renderLocalMode()) : ''}
             </div>

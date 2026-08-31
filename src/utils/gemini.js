@@ -13,7 +13,6 @@ const {
     normalizeLanguageCode,
     updatePreference,
 } = require('../storage');
-const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const { getConfiguredProviders, streamWithFallback, markProviderSuccess, markProviderFailure } = require('./providerRouter');
 const { readProviderEnv, syncProviderEnvironment } = require('./providerEnv');
 const { createTurnDebouncer } = require('./turnDebouncer');
@@ -28,7 +27,7 @@ function getLocalAi() {
     return _localai;
 }
 
-// Provider mode: 'byok', 'cloud', or 'local'
+// Provider mode: 'byok' or 'local'
 let currentProviderMode = 'byok';
 let currentAudioMode = 'speaker_only';
 let activeAnswerRequest = null;
@@ -303,12 +302,18 @@ function hasGroqKey() {
     return key && key.trim() != '';
 }
 
-function trimConversationHistoryForGemini(history, maxChars = 42000) {
+const MAX_CONTEXT_MESSAGES = 2;
+
+function getRecentConversationHistory(history, maxMessages = MAX_CONTEXT_MESSAGES) {
+    return Array.isArray(history) ? history.slice(-maxMessages) : [];
+}
+
+function trimConversationHistoryForGemini(history, maxChars = 42000, maxMessages = MAX_CONTEXT_MESSAGES) {
     if (!history || history.length === 0) return [];
     let totalChars = 0;
     const trimmed = [];
 
-    for (let i = history.length - 1; i >= 0; i--) {
+    for (let i = history.length - 1; i >= 0 && trimmed.length < maxMessages; i--) {
         const turn = history[i];
         const turnChars = (turn.content || '').length;
 
@@ -401,7 +406,10 @@ async function sendToGroq(transcription) {
             },
             body: JSON.stringify({
                 model: modelToUse,
-                messages: [{ role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' }, ...history],
+                messages: [
+                    { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
+                    ...getRecentConversationHistory(history),
+                ],
                 stream: true,
                 temperature: 0.7,
                 max_tokens: 1024,
@@ -453,13 +461,7 @@ async function sendToGroq(transcription) {
         const cleanedResponse = stripThinkingTags(fullText);
         const modelKey = modelToUse.split('/').pop();
 
-        const systemPromptChars = (currentSystemPrompt || 'You are a helpful assistant.').length;
-        const history = currentSession ? currentSession.groqHistory : [];
-        const historyChars = history.reduce((sum, msg) => sum + (msg.content || '').length, 0);
-        const inputChars = systemPromptChars + historyChars;
-        const outputChars = cleanedResponse.length;
-
-        incrementCharUsage('groq', modelKey, inputChars + outputChars);
+        incrementCharUsage('groq', modelKey, getNewUsageChars(transcription, cleanedResponse));
 
         if (cleanedResponse) {
             if (currentSession)
@@ -543,7 +545,7 @@ async function sendToGeminiText(transcription, appendUser = true, screenshot = g
             const chunkText = chunk.text;
             if (chunkText) {
                 if (isFirst && currentSession?.answerRequestedAt) {
-                    logLatency('cloud', 'transcription_ready_to_answer_first_token', Date.now() - currentSession.answerRequestedAt);
+                    logLatency('byok', 'transcription_ready_to_answer_first_token', Date.now() - currentSession.answerRequestedAt);
                     currentSession.answerRequestedAt = 0;
                 }
                 fullText += chunkText;
@@ -552,12 +554,7 @@ async function sendToGeminiText(transcription, appendUser = true, screenshot = g
             }
         }
 
-        const systemPromptChars = (currentSystemPrompt || 'You are a helpful assistant.').length;
-        const historyChars = trimmedHistory.reduce((sum, msg) => sum + (msg.content || '').length, 0);
-        const inputChars = systemPromptChars + historyChars;
-        const outputChars = fullText.length;
-
-        incrementCharUsage('gemini', modelToUse, inputChars + outputChars);
+        incrementCharUsage('gemini', modelToUse, getNewUsageChars(transcription, fullText));
 
         if (fullText.trim()) {
             if (currentSession)
@@ -606,6 +603,10 @@ function sendToAnswerProvider(transcription) {
         pendingAnswerRequest = null;
     });
     return activeAnswerRequest;
+}
+
+function getNewUsageChars(input, output) {
+    return String(input || '').trim().length + String(output || '').trim().length;
 }
 
 async function sendToAnswerProviderNow(transcription) {
@@ -662,14 +663,14 @@ async function sendToAnswerProviderNow(transcription) {
             providers: genericProviders,
             messages: [
                 { role: 'system', content: currentSystemPrompt || 'You are a helpful assistant.' },
-                ...(currentSession ? currentSession.groqHistory.slice(0, -1) : []),
+                ...getRecentConversationHistory(currentSession ? currentSession.groqHistory.slice(0, -1) : []),
                 createOpenAiUserMessage(transcription.trim(), screenshot),
             ],
             onToken: (token, fullText) => {
                 const displayText = stripThinkingTags(fullText);
                 if (!displayText) return;
                 if (isFirst && currentSession?.answerRequestedAt) {
-                    logLatency('cloud', 'transcription_ready_to_answer_first_token', Date.now() - currentSession.answerRequestedAt);
+                    logLatency('byok', 'transcription_ready_to_answer_first_token', Date.now() - currentSession.answerRequestedAt);
                     currentSession.answerRequestedAt = 0;
                 }
                 sendToRenderer(isFirst ? 'new-response' : 'update-response', displayText);
@@ -697,6 +698,9 @@ async function sendToAnswerProviderNow(transcription) {
         }
 
         const cleanedResponse = stripThinkingTags(result.text);
+        if (result.provider === 'groq') {
+            incrementCharUsage('groq', result.model.split('/').pop(), getNewUsageChars(transcription, cleanedResponse));
+        }
         if (currentSession) currentSession.groqHistory.push({ role: 'assistant', content: cleanedResponse });
         saveConversationTurn(transcription, cleanedResponse);
         console.log(`Answer completed via ${result.provider} (${result.model})`);
@@ -907,7 +911,7 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
                             const finalText = s.transcription;
                             const { transcription } = transitionTurn(s, endEvent);
                             if (transcription) {
-                                logLatency('cloud', 'speech_end_to_transcription_ready', Date.now() - speechEndedAt);
+                                logLatency('byok', 'speech_end_to_transcription_ready', Date.now() - speechEndedAt);
                                 sendToRenderer('interim-transcription', { text: finalText, isFinal: true });
                                 const preferences = getPreferences();
                                 if (!preferences.automaticResponse) {
@@ -1142,9 +1146,7 @@ async function startMacOSAudioCapture(geminiSessionRef) {
 
             const monoChunk = CHANNELS === 2 ? convertStereoToMono(chunk) : chunk;
 
-            if (currentProviderMode === 'cloud') {
-                sendCloudAudio(monoChunk);
-            } else if (currentProviderMode === 'local') {
+            if (currentProviderMode === 'local') {
                 getLocalAi().processLocalAudio(monoChunk, 'audio/pcm;rate=24000', 'speaker', currentAudioMode);
             } else if (currentProviderMode === 'byok-deepgram') {
                 sendDeepgramAudio(monoChunk, 'speaker');
@@ -1246,9 +1248,6 @@ async function sendImageToGeminiHttp(base64Data, prompt) {
             contents: contents,
         });
 
-        // Increment count after successful call
-        incrementCharUsage('gemini', model, 0);
-
         // Stream the response
         let fullText = '';
         let isFirst = true;
@@ -1261,6 +1260,8 @@ async function sendImageToGeminiHttp(base64Data, prompt) {
                 isFirst = false;
             }
         }
+
+        incrementCharUsage('gemini', model, getNewUsageChars(prompt, fullText));
 
         console.log(`Image response completed from ${model}`);
 
@@ -1278,25 +1279,6 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     setAudioMode(getPreferences().audioMode);
     // Store the geminiSessionRef globally for reconnection access
     global.geminiSessionRef = geminiSessionRef;
-
-    ipcMain.handle('initialize-cloud', async (event, token, profile, userContext) => {
-        try {
-            currentProviderMode = 'cloud';
-            initializeNewSession(profile);
-            setOnTurnComplete((transcription, response) => {
-                saveConversationTurn(transcription, response);
-            });
-            sendToRenderer('session-initializing', true);
-            await connectCloud(token, profile, userContext);
-            sendToRenderer('session-initializing', false);
-            return true;
-        } catch (err) {
-            console.error('[Cloud] Init error:', err);
-            currentProviderMode = 'byok';
-            sendToRenderer('session-initializing', false);
-            return false;
-        }
-    });
 
     ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile = 'interview', language = 'en-US') => {
         const deepgramApiKey = readProviderEnv()?.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY;
@@ -1330,9 +1312,7 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         try {
             const pcmBuffer = Buffer.from(data, 'base64');
             routeAudioChunk(currentAudioMode, source, pcmBuffer, ({ source: routedSource, chunk }) => {
-                if (currentProviderMode === 'cloud') {
-                    sendCloudAudio(chunk);
-                } else if (currentProviderMode === 'local') {
+                if (currentProviderMode === 'local') {
                     getLocalAi().processLocalAudio(chunk, mimeType, routedSource, currentAudioMode);
                 } else if (currentProviderMode === 'byok-deepgram') {
                     sendDeepgramAudio(chunk, routedSource);
@@ -1373,14 +1353,6 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
             if (isDebug) process.stdout.write('!');
 
-            if (currentProviderMode === 'cloud') {
-                const sent = sendCloudImage(data);
-                if (!sent) {
-                    return { success: false, error: 'Cloud connection not active' };
-                }
-                return { success: true, model: 'cloud' };
-            }
-
             if (currentProviderMode === 'local') {
                 const result = await getLocalAi().sendLocalImage(data, prompt);
                 return result;
@@ -1397,17 +1369,6 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
     ipcMain.handle('send-text-message', async (event, text) => {
         if (!text || typeof text !== 'string' || text.trim().length === 0) {
             return { success: false, error: 'Invalid text message' };
-        }
-
-        if (currentProviderMode === 'cloud') {
-            try {
-                console.log('Sending text to cloud:', text);
-                sendCloudText(text.trim());
-                return { success: true };
-            } catch (error) {
-                console.error('Error sending cloud text:', error);
-                return { success: false, error: error.message };
-            }
         }
 
         if (currentProviderMode === 'local') {
@@ -1521,12 +1482,6 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
             stopMacOSAudioCapture();
 
-            if (currentProviderMode === 'cloud') {
-                closeCloud();
-                currentProviderMode = 'byok';
-                return { success: true };
-            }
-
             if (currentProviderMode === 'local') {
                 getLocalAi().closeLocalSession();
                 currentProviderMode = 'byok';
@@ -1606,6 +1561,9 @@ module.exports = {
     setupGeminiIpcHandlers,
     formatSpeakerResults,
     sendToAnswerProvider,
+    getNewUsageChars,
+    getRecentConversationHistory,
+    trimConversationHistoryForGemini,
     createSessionState,
     transitionTurn,
     TURN_STATE,
