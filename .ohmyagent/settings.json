@@ -1,8 +1,0 @@
-{
-  "permission_rules": [
-    {
-      "tool": "Cmd(dir *)",
-      "decision": "allow"
-    }
-  ]
-}
