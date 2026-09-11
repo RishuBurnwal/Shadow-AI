@@ -1,0 +1,61 @@
+{
+    "name": "shadow-ai",
+    "productName": "Shadow AI",
+    "version": "0.7.0",
+    "description": "Shadow AI real-time desktop assistant",
+    "main": "src/index.js",
+    "scripts": {
+        "start": "electron-forge start",
+        "package": "electron-forge package",
+        "make": "electron-forge make",
+        "publish": "electron-forge publish",
+        "build:assets": "node scripts/build-assets.cjs",
+        "lint": "prettier --check .",
+        "test": "node --test",
+        "lint:fix": "prettier --write .",
+        "test:electron": "node scripts/run-electron-smoke.cjs",
+        "test:launcher": "python -m unittest discover -s test -p test_launcher.py",
+        "test:drag": "node scripts/run-electron-smoke.cjs scripts/window-drag-audit.cjs"
+    },
+    "keywords": [
+        "shadow ai",
+        "shadow ai assistant",
+        "shadow ai desktop assistant",
+        "shadow ai assistant for interviews"
+    ],
+    "author": {
+        "name": "RishuBurnwal",
+        "email": "rishukumarburnwal9525@gmail.com"
+    },
+    "license": "GPL-3.0",
+    "dependencies": {
+        "@google/genai": "^2.12.0",
+        "@grpc/grpc-js": "^1.14.4",
+        "@grpc/proto-loader": "^0.8.1",
+        "@huggingface/transformers": "^3.8.1",
+        "electron-squirrel-startup": "^1.0.1",
+        "ollama": "^0.6.3",
+        "onnxruntime-node": "^1.21.0",
+        "unpdf": "^1.6.2"
+    },
+    "devDependencies": {
+        "@electron-forge/cli": "^7.8.1",
+        "@electron-forge/maker-dmg": "^7.8.1",
+        "@electron-forge/maker-squirrel": "^7.8.1",
+        "@electron-forge/plugin-auto-unpack-natives": "^7.8.1",
+        "@electron-forge/plugin-fuses": "^7.8.1",
+        "@electron/fuses": "^1.8.0",
+        "@reforged/maker-appimage": "^5.0.0",
+        "electron": "^41.10.7",
+        "esbuild": "^0.28.2",
+        "highlight.js": "^11.9.0",
+        "lit": "^2.7.4",
+        "marked": "^4.3.0",
+        "prettier": "^3.9.5"
+    },
+    "overrides": {
+        "sharp": "^0.35.4",
+        "tar": "^7.5.22",
+        "tmp": "^0.2.7"
+    }
+}
